@@ -68,6 +68,8 @@
 		  (format output "~a~%"
 			  (funcall *main-inference-function*
 				   τ_ab (+ f τ_ab) *τ_max* ρ₁ ρ₂ ρ₃ ρ₄ ρ₅ θ *N* *L*)))))))))))
+
+
 ;; COMMENTARY: The above code does the following. For each parameter regime, we
 ;; simulate *N* loci each of length *L*. Since *N* is large, this allows us to
 ;; determine the likelihood of inferring the correct species tree topology

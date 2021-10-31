@@ -1,5 +1,7 @@
-## 2021-03-08 R Intro
+## 2021-10-28 R Intro
 ## Source: http://leg.ufpr.br/~silvia/R2001/contents.html
+## This document contains my random experiments with R for making plots.
+
 
 ## Store values
 x <- 3
@@ -13,6 +15,10 @@ y <- c( v, 2, 3,4)
 
 
 z <- c(1:3, 1:4)
+z
+
+
+z= replicate(420,0)
 z
 
 ## Define a (finite) sequence with a given start, end, and step size
@@ -286,3 +292,218 @@ Evaluation took:
   1,684,325,616 bytes consed
   
 "0.309,0.297,0.394,1,1.01,999999,10,0,0,0,0,0.02,1000,2000"
+
+
+
+
+## Part 10. Redoing JC-sequence plots from part 5
+
+packages <- c("ggplot2")
+invisible(lapply(packages, library, character.only = TRUE)) # Packages loading
+setwd('../scripts/')
+
+
+### Plot 10.1. Cross-section of anomaly zone (red/blue dots)
+### When this is repeated with θ=0.01 (as well as JCS) the result is similar.
+df = subset(read.csv("../data/part5/jc-sequence-N10000-L500.csv", header=TRUE), θ==0.1)
+p <- df$P.bc>df$P.ab
+q <- df$P.ac>df$P.ab
+inconsistency_zone <- p | q 
+plot = ggplot(df, aes(x = ρ_a, y = τ_abc-τ_ab, color = !inconsistency_zone, size =2)) +
+    geom_point() + 
+    labs(title="Inconsistency Zone of R* with sequence distances", #note θ=0.1,L=500
+         x = expression('Recombination rate in population A (ρ' ['A'] * ')'),
+         y= expression('Internal branch length (τ' ['AB'] * ')'),
+         color="Topology correctly inferred?") +
+    scale_size(guide=FALSE) + #removes the 'size' legend'
+    guides(color = guide_legend(reverse = TRUE))
+#print(plot)
+ggsave("part10-plot1.jpeg",path="../analysis/")
+
+
+
+
+
+
+### Plot 10.2. 3D anomaly zone plot
+### Got color code from https://stackoverflow.com/questions/17258787/formatting-of-persp3d-plot
+### Adapted code from: https://stackoverflow.com/questions/36413652/3d-surface-interpolation?rq=1
+rgl.open()
+open3d()
+df = subset(read.csv("../data/part5/jc-sequence-N10000-L500.csv", header=TRUE), θ==0.1)
+
+x = df$ρ_a # x = recomb rate in population A
+y = df$τ_abc - df$τ_ab # y = internal branch length
+z = df$P.ab - df$P.bc # z = P[ab|c]-P[bc|a]
+
+
+# Interpolate
+n_interpolation <- 25
+spline_interpolated <- interp(x, y, z,
+                              xo=seq(min(x), max(x), length = n_interpolation),
+                              yo=seq(min(y), max(y), length = n_interpolation),
+                              linear = TRUE, extrap = FALSE)
+x.si <- spline_interpolated$x
+y.si <- spline_interpolated$y
+z.si <- spline_interpolated$z
+
+
+# Number of colors + color vector
+#nbcol = 100
+#color = rainbow(nbcol, start = 0/6, end = 4/6)
+#color
+zcol  = cut(z.si, -1:1)
+color = c("#F9766EFF","#00BFC4FF")
+color
+
+
+## Plot it
+persp3d(x.si, y.si, z.si, col = color[zcol], ticktype="detailed", shade = 0.3, xlab = "", ylab = "", zlab = "")
+decorate3d(main = "", xlab=expression(bold('ρ' ['A'])), ylab=expression(bold('τ' ['AB'])), zlab=expression(bold('z')))
+rglwidget()
+
+
+
+
+
+
+
+
+
+## Part 9. Recomb in A vs Recomb in B
+## τ_ab ∈ (1) 
+## f ∈ (0.01) 
+## τ_max=999999 
+## θ ∈ (0.01) 
+## N=10000 
+## L=500 
+## ρ_a ∈ (0 2 4 6 8 10 12 14 16 18 20) 
+## ρ_b ∈ (0 2 4 6 8 10 12 14 16 18 20) 
+## ρ_c ∈ (0) 
+## ρ_ab ∈ (0) 
+## ρ_abc ∈ (0)
+
+##> getwd()
+##[1] "/home/mutalisk/MSCR-simulator/scripts"
+
+
+## Part 9.1 -- Red/blue/black dot plot
+packages <- c("ggplot2")
+invisible(lapply(packages, library, character.only = TRUE)) # Packages loading
+setwd('../data/part9/')
+
+df = read.csv("part9-sim1-jc-sequence-N10000-L500.csv",header=TRUE)
+x = df$ρ_a # x = recomb rate in population A
+y = df$ρ_b # y = recomb rate in population B
+
+p = ggplot(df, aes(x=ρ_a, y=ρ_b, size=2, color = factor(1*(P.bc>P.ab & P.bc>P.ac) - 1*(P.ac>P.ab & P.ac>P.bc) ))) + # categoral variable indicating which topology wins, with 1,2,and 3 corresponding to AC|B, AB|C, and BC|A respectively)
+    geom_point() +
+    scale_colour_manual(labels = c("AC|B", "AB|C", "AC|B"), values = c("black","#00BFC4FF","#F9766EFF")) +
+    labs(title="Inference with Recombination in A and B",
+         color="Most inferred topology",
+         x=expression('Recombination rate in population A (ρ'['A'] * ')'),
+         y=expression('Recombination rate in population B (ρ'['B'] * ')')) +
+    scale_size(guide=FALSE)
+p
+ggsave("part9-plot1.jpeg",path="../../analysis/")
+
+
+
+
+ggsave("part9-plot1.jpeg",path="../analysis/")
+
+
+## Part 9.3 -- 3D Surface plot
+# Interpolate
+df = read.csv("part9-sim2-jc-sequence-N10000-L500.csv",header=TRUE)
+x = df$ρ_a # x = recomb rate in population A
+y = df$ρ_b # y = recomb rate in population B
+z=df$P.ab
+
+
+n_interpolation <- 100
+spline_interpolated <- interp(x, y, z,
+                              xo=seq(min(x), max(x), length = n_interpolation),
+                              yo=seq(min(y), max(y), length = n_interpolation),
+                              linear = TRUE, extrap = FALSE)
+x.si <- spline_interpolated$x
+y.si <- spline_interpolated$y
+z.si <- spline_interpolated$z
+
+x.si
+y.si
+z.si
+
+# Number of colors + color vector
+#nbcol = 100
+#color = rainbow(nbcol, start = 0/6, end = 4/6)
+#color
+zcol  = cut(z.si, -1:1)
+color = c("#F9766EFF","#00BFC4FF")
+color
+
+
+## Plot it
+persp3d(x.si, y.si, z.si, col = color[zcol], ticktype="detailed", shade = 0.3, xlab = "", ylab = "", zlab = "")
+
+decorate3d(main = "", xlab=expression(bold('ρ' ['A'])), ylab=expression(bold('ρ' ['B'])), zlab=expression(bold('z')))
+rglwidget()
+
+
+
+
+
+## Part 11. All the same recombination rates
+
+## (defparameter *τ_ab-values* '(1)) ; age of most recent species divergence
+
+## (defparameter *f-values* '(.01))
+## 				 ; f is the internal branch length on the
+## 				 ; species tree: f=τ_abc-τ_ab.
+
+## ;; The following parameters define population-specific recombination rates.
+## ;; There are 5 populations, corresponding to edges on the species tree (A, B, C,
+## ;; AB) as well as the root of the species tree (ABC). The simulator will
+## ;; consider all possible combinations of the listed values.
+## (defparameter *ρ_a-values* '(2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20))
+## (defparameter *ρ_b-values* '(0))
+## (defparameter *ρ_c-values* '(0))
+## (defparameter *ρ_ab-values* '(0))
+## (defparameter *ρ_abc-values* '(0))  ; Note that choosing a non-zero values for
+## 				    ; ρ_abc can significantly increase computing
+## 				    ; time.
+
+## (defparameter *θ-values* '(.01)) ; mutation rate
+
+## (defparameter *N* 10000) ; sample size (number of sampled loci)
+## (defparameter *L* 500) ; locus length (in base pairs)
+
+
+## (defparameter *τ_max* 999999)
+
+
+getwd()
+df=read.csv("../data/part11/part11-sim2-jc-sequence-N100000-L500.csv")
+
+
+
+df$P.ab > df$P.ac & df$P.ab > df$P.bc
+
+x=df$ρ_a
+x
+y=df$P.ab-pmax(df$P.ac,df$P.bc)
+plot(x,y)
+
+
+
+p = ggplot(df, aes(x=ρ_a, y=df$P.ab-pmax(df$P.ac,df$P.bc), size=2, color = TRUE)) + 
+    geom_point() +
+    scale_colour_manual(values = c("#F9766EFF")) +
+    labs(title="Equal recombination in populations A, B, C, AB",
+         x=expression('Recombination rate ρ in populations A, B, C, and AB'),
+         y=expression('P[AB|C]-max(P[AC|B],P[BC|A]')) +
+    scale_size(guide=FALSE)
+
+p
+
+
