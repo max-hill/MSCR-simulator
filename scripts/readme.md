@@ -39,6 +39,10 @@ themselves.
   species tree with topology ((AB)C), as well as those functions for inferring
   gene 'tree' topologies from the simulated data. It is loaded automatically by
   [simulate.sh](simulate.sh).
+  
+* [generalized-simulator.lisp](generalized-simulator.lisp) is an attempt to 
+  generalize the simulator to take as input arbitrary newick trees. It is 
+  currently under construction. 
 
 * [make-plots.R](make-plots.R) contains R code for creating all plots in my
   project report from the simulation data contained in the `data/` directory. The
