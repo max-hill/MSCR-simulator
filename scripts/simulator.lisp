@@ -2,7 +2,7 @@
 ;;                      recombination and attempt to infer species trees from it
 ;; 
 ;; Author: max hill 
-;; (Last updated 2021-06-21)
+;; (Last updated 2022-05-15)
 
 ;; DESCRIPTION: This file contains all general functions for simulating the
 ;; multispecies coalescent with recombination on a species triplet with topology
@@ -49,6 +49,8 @@ infinity, represented by most-positive-long-float (1.7976931348623157d308)."
       (- (/ (log (- 1 (random 1d0))) λ))))
 
 (defun interval (a b)
+  "Construct an 'interval' of integers from a to b, inclusive. Note that a and b
+must both be integers."
   (loop for i from a to b collecting i))
 
 ;; (defun intervalnn (a b &optional (x nil))
@@ -685,4 +687,9 @@ number of samples, as this is an estimate of the expected pairwise differences."
     (format nil "~a,~a,~a,~a,~a,~a,~a,~a,~a,~a,~a,~a,~a,~a"
 	    d-ab d-ac d-bc τ_ab τ_abc τ_max ρ_a ρ_b ρ_c ρ_ab
 	    ρ_abc θ number-of-samples number-of-base-pairs)))
+
+
+
+
+
 
