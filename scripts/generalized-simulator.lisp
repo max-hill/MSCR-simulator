@@ -34,12 +34,30 @@ a number."
 a number, and the subtrees should be trees (either nodes or leafs, but not nil."
   (list (make-leaf node-label distance-from-parent) left-subtree right-subtree))
 
-;; For example,
+;; Example 1. A rooted three-leaf tree:
 ;; (make-node "root" 0
 ;;            (make-node "AB" 1
 ;;                       (make-leaf "A" 1)
 ;;                       (make-leaf "B" 1))
 ;;            (make-leaf "C" 2))
+;;
+;; Example 2. A balanced quartet:
+;; (make-node "root" 0
+;;            (make-node "AB" 1
+;;                       (make-leaf "A" .1)
+;;                       (make-leaf "B" .1))
+;;            (make-node "CD" 1
+;;                       (make-leaf "C" .1)
+;;                       (make-leaf "D" .1)))
+;;
+;; Example 3. An unbalanced quartet:
+;; (make-node "root" 0
+;;            (make-node "ABC" 1
+;;                       (make-node "AB" .1
+;;                                  (make-leaf "A" .1)
+;;                                  (make-leaf "B" .1))
+;;                       (make-leaf "C" .1))
+;;            (make-leaf "D" 4))
 
 
 ;; Part 2. Recognizers
@@ -188,6 +206,23 @@ nucleotide at the root."
 
 
 ;; Remains to do:
+;;
 ;; 1. Implement a newick -> lisp tree converter
-;; 2. Actually implement recombination...
-;; 3. Write an msr. 
+;;
+;; 2. Implement recursion. To do this, we need to do two tasks. First, we need
+;;    to adapt the main arg-simulator function arg-builder to a similar
+;;    recursive structure as we have done here in evolve-down-tree. This new
+;;    recursive arg-builder function will output a collection called
+;;    'output-edges' of coalescent times of all the pairs. Second, to generate a
+;;    marginal gene tree for each of the k sites, we can run
+;;    (compute-marginal-tmrcas i j output-edges k) for all distinct pairs of
+;;    leaves i and j. Then we'll have a big matrix of coalescent times and we
+;;    can just lookup the times to create the marginal gene trees. Or better, we
+;;    can write a new function that takes as input the set output-edges, a site
+;;    i∈{1,...k}, and outputs a gene tree in the appropriate form for
+;;    evolve-down-tree. Then run evolve down tree and save the result as a
+;;    column in the MSA.
+;;
+;; 3. Implement the inference methods on the new MSAs. In particular, we want to
+;;    implement the four-point method. We could also try estimating branch
+;;    lengths, as this would be a key test of one of our paper's conclusions.
