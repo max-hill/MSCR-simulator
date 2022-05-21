@@ -17,31 +17,42 @@
 ;; There are two kinds of binary trees: (1) nodes and (2) leaves. 
 ;;
 ;; 1. A *leaf* is a list with two components: a string (i.e. the label) followed
-;;    by a number (i.e. the distance from the parent). For example, ("a" 2.3)
+;;    by a list of three elements (1: a number representing the distance from
+;;    the parent, 2: a number, representing the mutation rate on that edge, and
+;;    3: a number, representing the recombination rate on that edge). For
+;;    example, ("a" (2.3 .1 1.2))
 ;;
 ;; 2. A *node* is a list with three components: a leaf, a left subtree and a
 ;;    right subtree: (leaf left-subtree right-subtree). For example:
 ;;    (("ab" 1) ("a" 2.3) ("b" 2.7))
 
 
-(defun make-leaf (leaf-label distance-from-parent)
+(defun make-leaf (leaf-label distance-from-parent mutation-rate recombination-rate)
   "Create a leaf. Leaf-label should be a string. Distance-from-parent should be
 a number."
-  (list leaf-label distance-from-parent))
+  (list leaf-label
+        (list distance-from-parent
+        mutation-rate
+        recombination-rate)))
 
-(defun make-node (node-label distance-from-parent left-subtree right-subtree)
+(defun make-node (node-label distance-from-parent mutation-rate recombination-rate left-subtree right-subtree)
   "Create a node. Node-label should be a string, distance-from-parent should be
 a number, and the subtrees should be trees (either nodes or leafs, but not nil."
-  (list (make-leaf node-label distance-from-parent) left-subtree right-subtree))
+  (list (make-leaf node-label
+                   distance-from-parent
+                   mutation-rate
+                   recombination-rate)
+        left-subtree
+        right-subtree))
 
-;; Example 1. A rooted three-leaf tree:
+;; Example 1. A rooted three-leaf tree: (deprecated)
 ;; (make-node "root" 0
 ;;            (make-node "AB" 1
 ;;                       (make-leaf "A" 1)
 ;;                       (make-leaf "B" 1))
 ;;            (make-leaf "C" 2))
 ;;
-;; Example 2. A balanced quartet:
+;; Example 2. A balanced quartet: (deprecated)
 ;; (make-node "root" 0
 ;;            (make-node "AB" 1
 ;;                       (make-leaf "A" .1)
@@ -51,13 +62,14 @@ a number, and the subtrees should be trees (either nodes or leafs, but not nil."
 ;;                       (make-leaf "D" .1)))
 ;;
 ;; Example 3. An unbalanced quartet:
-;; (make-node "root" 0
-;;            (make-node "ABC" 1
-;;                       (make-node "AB" .1
-;;                                  (make-leaf "A" .1)
-;;                                  (make-leaf "B" .1))
-;;                       (make-leaf "C" .1))
-;;            (make-leaf "D" 4))
+;; (make-node "root" 0 3 0 
+;;            (make-node "ABC" 1 2 3 
+;;                       (make-node "AB" .1 2 3
+;;                                  (make-leaf "A" .1 1 4)
+;;                                  (make-leaf "B" .1 1 1))
+;;                       (make-leaf "C" .1 1.3 0))
+;;            (make-leaf "D" 4 1.1 0))
+
 
 
 ;; Part 2. Recognizers
@@ -67,7 +79,8 @@ a number, and the subtrees should be trees (either nodes or leafs, but not nil."
   (if (and (listp tree)
            (= 2 (length tree))
            (stringp (first tree))
-           (numberp (second tree)))
+           (listp (second tree))
+           (= 3 (length (second tree))))
       t
       nil))
 
@@ -78,25 +91,42 @@ a number, and the subtrees should be trees (either nodes or leafs, but not nil."
       t
       nil))
 
+;; Part 3. Selectors
+
 (defun leaf-name (leaf)
   "Return name of leaf."
   (first leaf))
 
 
-;; Part 3. Selectors
-
 (defun leaf-dist-from-parent (leaf)
   "Return distance of leaf from its parent."
-  (second leaf))
+  (first (second leaf)))
 
 (defun node-name (node)
   "Return the name (i.e. label) of node."
   (first (first node)))
 
+(defun get-leaf-number (tree))
+  
+(defun fast-bin-tree-preorder (tree)
+  "A tail-recursive version of bin-tree-preorder. Source:
+https://www2.cs.sfu.ca/CourseCentral/310/pwfong/Lisp/3/tutorial3.html"
+  (preorder-aux tree nil))
 
+(defun list-leaves-aux (tree x)
+  "recursively build a list of leaf names of tree. the accumulator variable is x. Source: https://www2.cs.sfu.ca/CourseCentral/310/pwfong/Lisp/3/tutorial3.html"
+  (if (leafp tree)
+      (cons (leaf-name tree) x)
+      (cons (list-leaves-aux (right-subtree tree)
+                             (list-leaves-aux (left-subtree tree) x)))))
+
+
+
+
+  
 (defun node-dist-from-parent (node)
   "Return the distance of node from its parent."
-  (second (first node)))
+  (first (second (first node))))
 
 (defun left-subtree (tree)
   "Return the left subtree of tree. If tree is a leaf, return nil."
@@ -226,3 +256,84 @@ nucleotide at the root."
 ;; 3. Implement the inference methods on the new MSAs. In particular, we want to
 ;;    implement the four-point method. We could also try estimating branch
 ;;    lengths, as this would be a key test of one of our paper's conclusions.
+
+
+(((0 (1 2 3 4 5) NIL NIL)))
+
+
+Make sample
+(make-list 5)
+(list 0 (interval 1 5))
+
+
+;; the following function allows us to avoid the strange backticks used in
+;; simulate-three-species
+(defun make-leaf-sample (i n k)
+  "makes the i-th initial sample for an n-taxa gene tree when sequences are
+length k"
+  (list (list (cons 0 (append (make-list (- i 1))
+                              (cons (interval 1 k)
+                                    (make-list (- n i))))))))
+
+
+(defun simulate-three-species (τ_ab τ_abc τ_max ρ_a ρ_b ρ_c ρ_ab ρ_abc number-of-base-pairs)
+  "Construct an ARG on a 3-taxa species tree with given parameters"
+  (let* ((sample-A (make-leaf-sample 1 3 number-of-base-pairs))
+	 (sample-B (make-leaf-sample 2 3 number-of-base-pairs))
+	 (sample-C (make-leaf-sample 3 3 number-of-base-pairs))
+	 (edges-from-A (arg-builder ρ_a 0 τ_ab number-of-base-pairs sample-A))
+	 (edges-from-B (arg-builder ρ_b 0 τ_ab number-of-base-pairs sample-B))
+	 (edges-from-C (arg-builder ρ_c 0 τ_abc number-of-base-pairs sample-C))
+	 (edges-from-AB (arg-builder ρ_ab τ_ab τ_abc number-of-base-pairs
+				     (list (union (first edges-from-A)
+						  (first edges-from-B))
+					   (union (second edges-from-A)
+						  (second edges-from-B))))))
+    (arg-builder ρ_abc τ_abc τ_max number-of-base-pairs
+		 (list (union (first edges-from-AB)
+			      (first edges-from-C))
+		       (union (second edges-from-AB)
+			      (second edges-from-C)))
+		 t)))
+
+
+(defun merge-output-edge-sets (s1 s2)
+  "combine active lineages from two daughter populations for entry into their
+parent population. Note that if one of the edge-sets is nil, this will just
+output the other edge set."
+  (list (union (first s1) (first s2))))
+
+(defun mscr-general-simulator (i n number-of-base-pairs tree edge-sets)
+  "n: number of leaves of initial tree. number-of-base-pairs: sequence length, in nucleotides. The
+input i tracks the leaf number: its initial value is 0 and it increments i by 1
+each time a right subtree is recursively evaluated. initial value of edge-sets
+should be nil, i think."
+  (if (leafp tree)
+      (make-leaf-sample leaf-number-tracker n number-of-base-pairs)
+      (arg-builder n number-of-base-pairs i tree
+                   (merge-output-edge-sets (mscr-general-simulator n number-of-base-pairs i
+                                                                   (left-subtree tree) edge-sets)
+                                           (mscr-general-simulator n number-of-base-pairs (+ i 1)
+                                                                   (right-subtree tree) edge-sets)))))
+      
+(let* ((k (number-of-active-lineages edge-sets))
+       (coales-rate (* .5 k (- k 1)))
+       (recomb-rate (* .5 k ρ))
+       (total-rate (+ coales-rate recomb-rate))
+       (t_1 (+ t_0 (draw-exponential total-rate))))
+  (if (or (> t_1 t_end) (and stop-at-mrca (= k 1)))
+      edge-sets
+      (arg-builder ρ t_1 t_end number-of-base-pairs
+		   (if (< (random 1d0) (/ recomb-rate total-rate))
+		       (implement-recombination t_1 edge-sets number-of-base-pairs)
+		       (implement-coalescence t_1 edge-sets))
+		   stop-at-mrca)))
+
+(defun number-of-active-lineages (edge-sets)
+  "Determine how many lineages are 'active' in a population (a lineage is active
+if it is a candidate for coalescence. Recall that when a lineage undergoes
+recombination, it is rendered inactive, but two new active lineages are created.
+In general, active lineages are stored in P and inactive lineages are stored in
+Q. I can't remember off the top of my head but there might be an exception to
+this rule.)"
+  (length (first edge-sets)))
