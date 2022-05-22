@@ -196,15 +196,18 @@ loaded).
 
 
 ## Todo
+* Generalize simulator to work with abitrary tree inputs
+
+* Run with quartet trees, inference with 4-point condition, both caterpillar and
+  balanced.
+
+* Branch length estimates for 3-taxa trees would be interesting -- maybe use the
+  ML calculations from undergrad MXM project.
 
 * Plan some longer simulations with smaller mutation rates
-
-* Simulations with virus-specific parameter values
 
 * Redo the simulation from part 2 of the project report with more values for f,
   more values for recombination rate in A, no recombination in AB, and only one
   mutation rate).
   
-* Section 3 plots would be better illustrated by a surface in three dimensions
-  with an intersecting plane given by z:= P[A(BC)]-P[(AB)C]=0
 

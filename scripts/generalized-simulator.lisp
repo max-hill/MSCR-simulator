@@ -35,7 +35,8 @@ a number."
         mutation-rate
         recombination-rate)))
 
-(defun make-node (node-label distance-from-parent mutation-rate recombination-rate left-subtree right-subtree)
+(defun make-node (node-label distance-from-parent mutation-rate
+recombination-rate left-subtree right-subtree)
   "Create a node. Node-label should be a string, distance-from-parent should be
 a number, and the subtrees should be trees (either nodes or leafs, but not nil."
   (list (make-leaf node-label
