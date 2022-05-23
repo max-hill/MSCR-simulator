@@ -1,17 +1,44 @@
-;;;; generalized-simulator.lisp --- My attempt to implement MSCR on general
-;;;;                                trees. Currently under construction.
+;;;; generalized-simulator.lisp --- Implement the MSCR-JC(k) process on
+;;;;                                arbitrary binary trees. Currently under
+;;;;                                construction.
 ;; 
 ;; Author: max hill 
-;; (Last updated 2022-05-15)
+;; (Last updated 2022-05-22)
 
-;; DESCRIPTION: Here our goal is to implement a simulator which takes as input a
+;; DESCRIPTION: Here we attempt to implement a simulator which takes as input a
 ;; binary tree T (ideally in newick tree format, with branch lengths) and output
 ;; an MSA in the form of an alignment file generated according to the MSCR
 ;; process on T.
 ;;
-;; We'll start by following the ideas presented at
-;; https://www2.cs.sfu.ca/CourseCentral/310/pwfong/Lisp/3/tutorial3.html
+;; At present, both the JC69 process and the MSCR process have been implemented
+;; for arbitrary trees. These are two ends of the pipeline, but they are not
+;; connected yet. Inference is also not implemented.
 ;;
+;; Remains to do:
+;;
+;; 1. (low priority) Implement a newick -> lisp tree converter
+;;
+;; 2. (high priority) Write a program to generate marginal gene trees from the
+;;    output of mscr which can then be used as input for the mutation simulator.
+;;    One option: to generate a marginal gene tree for each of the k sites, we
+;;    can run (compute-marginal-tmrcas i j output-edges k) for all distinct
+;;    pairs of leaves i and j. Then we'll have a big matrix of coalescent times
+;;    and we can just lookup the times to create the marginal gene trees. Or
+;;    better, we can write a new function that takes as input the set
+;;    output-edges, a site i∈{1,...k}, and outputs a gene tree in the
+;;    appropriate form for evolve-down-tree. Then run evolve down tree and save
+;;    the result as a column in the MSA.
+;;
+;; 3. (high priority) Implement the inference methods on the new MSAs. In
+;;    particular, we want to implement the four-point method. We could also try
+;;    estimating branch lengths, as this would be a key test of one of our
+;;    paper's conclusions.
+;;
+;; 4. (low priority) address performance issues arising from use of integer
+;;    intervals.
+;;
+;; Sources: The following resource was extremely helpful:
+;; https://www2.cs.sfu.ca/CourseCentral/310/pwfong/Lisp/3/tutorial3.html
 ;;
 ;;______________________________________________________________________________
 ;;
@@ -262,19 +289,18 @@ Works for both leaves and internal nodes."
 ;; For simplicity, we will implement nucleotides here as the numbers 0,1,2,3
 ;; rather than A,T,C,G. Everything will assume JC69 process.
 ;;
-;; We'll just us a global mutation rate for now. This is the rate at which a
-;; nucleotide leaves is current state according to the JC69 process. It is
-;; constant for the whole species tree.
+;; Each edge of the tree has an associated mutation rate. This is the rate at
+;; which a nucleotide leaves its current state according to the JC69 process.
 
-(defparameter *mutation-rate* 1)
-
-;; The next function is used for generating a nucleotide at the root of the tree.
+;; The next function is used to generate a nucleotide at the root of the tree.
 
 (defun draw-random-nucleotide ()
   "Return a random number from the set {0,1,2,3}."
   (random 4))
 
-;; The next (highly inefficient) function creates an interval of integers.
+;; The next (highly inefficient) function creates an interval of integers. Its
+;; performance is very poor when k is large. With a little bit of thought and
+;; effort, I could addres this issue. (low priority)
 
 (defun interval (a b)
   "Construct an 'interval' of integers from a to b, inclusive. Note that a and b
@@ -344,56 +370,14 @@ the root vertex to zero."
 ;; (evolve-down-tree *example-node*)
 
 
-;; Remains to do:
-;;
-;; 1. (low priority) Implement a newick -> lisp tree converter
-;;
-;; 2. (high priority) Write a program to generate marginal gene trees from the
-;;    output of mscr which can then be used as input for the mutation simulator.
-;;    One option: to generate a marginal gene tree for each of the k sites, we
-;;    can run (compute-marginal-tmrcas i j output-edges k) for all distinct
-;;    pairs of leaves i and j. Then we'll have a big matrix of coalescent times
-;;    and we can just lookup the times to create the marginal gene trees. Or
-;;    better, we can write a new function that takes as input the set
-;;    output-edges, a site i∈{1,...k}, and outputs a gene tree in the
-;;    appropriate form for evolve-down-tree. Then run evolve down tree and save
-;;    the result as a column in the MSA.
-;;
-;; 3. (high priority) Implement the inference methods on the new MSAs. In
-;;    particular, we want to implement the four-point method. We could also try
-;;    estimating branch lengths, as this would be a key test of one of our
-;;    paper's conclusions.
-
-
-;; the following function allows us to avoid the strange backticks used in
-;; simulate-three-species
+;; the following function allows us to avoid the strange backticks like those
+;; used in our original simulator, simulate-three-species
 (defun make-leaf-sample (i n-total-leaf-number k-sequence-length)
   "makes the i-th initial sample for a phylogenetic tree with a number of taxa
 equal to n-total-leaf-number, and when sequences are length k-sequence-length"
   (list (list (cons 0 (append (make-list (- i 1))
                               (cons (interval 1 k-sequence-length)
                                     (make-list (- n-total-leaf-number i))))))))
-
-
-(defun simulate-three-species (τ_ab τ_abc τ_max ρ_a ρ_b ρ_c ρ_ab ρ_abc k-sequence-length)
-  "Construct an ARG on a 3-taxa species tree with given parameters"
-  (let* ((sample-A (make-leaf-sample 1 3 k-sequence-length))
-	 (sample-B (make-leaf-sample 2 3 k-sequence-length))
-	 (sample-C (make-leaf-sample 3 3 k-sequence-length))
-	 (edges-from-A (arg-builder ρ_a 0 τ_ab k-sequence-length sample-A))
-	 (edges-from-B (arg-builder ρ_b 0 τ_ab k-sequence-length sample-B))
-	 (edges-from-C (arg-builder ρ_c 0 τ_abc k-sequence-length sample-C))
-	 (edges-from-AB (arg-builder ρ_ab τ_ab τ_abc k-sequence-length
-				     (list (union (first edges-from-A)
-						  (first edges-from-B))
-					   (union (second edges-from-A)
-						  (second edges-from-B))))))
-    (arg-builder ρ_abc τ_abc τ_max k-sequence-length
-		 (list (union (first edges-from-AB)
-			      (first edges-from-C))
-		       (union (second edges-from-AB)
-			      (second edges-from-C)))
-		 t)))
 
 
 (defun merge-output-edge-sets (child-1 child-2)
