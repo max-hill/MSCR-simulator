@@ -311,8 +311,8 @@ the given time."
 	 (new-p (remove-elements coalescing-pair (cons coalescent-parent (first edge-sets))))
 	 (new-q (cons coalescent-parent (second edge-sets))))
     (progn
-;      (format t "~%~%COALESCENCE at time ~a~%Two child edges removed: ~a~%                         ~a~%One parent edge created: ~a"
-;	      time (first coalescing-pair) (second coalescing-pair) coalescent-parent)
+      (format t "~%~%COALESCENCE at time ~a~%Two child edges removed: ~a~%                         ~a~%One parent edge created: ~a"
+	      time (first coalescing-pair) (second coalescing-pair) coalescent-parent)
       (list new-p new-q))))
 
 

@@ -415,8 +415,9 @@ other edge set."
      (get-dist-from-parent tree)))
 
 ;; this is the main simulator. It is currently running without error, but the
-;; output is not correct. It looks like some of the subroutines borrowed from the earlier simulator need to be modified.
-(defun mscr (n-total-leaf-number leaf-number-tracker k-sequence-length tree edge-sets)
+;; output is not correct. It looks like some of the subroutines borrowed from the earlier simulator need to be modified... Actually, I think I fixed those issues now. I need to make mscr into an auxillary function mscr-aux, and then write an intial function mscr which treats the root population differently (i.e. by setting 'stop-at-mrca' to true when calling 'build-single-population-arg'.
+(defparameter *leaf-number-tracker* 0)
+(defun mscr (n-total-leaf-number k-sequence-length tree edge-sets)
   "Input comments: the variable 'n-total-leaf-number' is number of leaves on the
 initial (i.e. full) tree, 'k-sequence-length' is just the length of the
 sequences in base pairs. The input 'leaf-number-tracker' tracks the leaf number:
@@ -428,17 +429,17 @@ nil, I think."
                                (get-population-end-time tree)   ; t_end
                                k-sequence-length
                                (if (leafp tree)
-                                   (make-leaf-sample leaf-number-tracker
+                                   (make-leaf-sample (progn
+                                                       (print *leaf-number-tracker*)
+                                                       (incf *leaf-number-tracker*))
                                                      n-total-leaf-number
                                                      k-sequence-length)
                                    (merge-output-edge-sets
                                     (mscr n-total-leaf-number
-                                          leaf-number-tracker
                                           k-sequence-length
                                           (left-subtree tree)
                                           edge-sets) ; is this right?
                                     (mscr n-total-leaf-number
-                                          (+ leaf-number-tracker 1)
                                           k-sequence-length
                                           (right-subtree tree)
                                           edge-sets)))))
