@@ -152,7 +152,6 @@ from the vertex to one of its leaves"
 Output: the same tree, but with labelled vertex times."
   (add-vertex-times-to-tree-aux tree (get-total-tree-height tree)))
 
-        
 ;;______________________________________________________________________________
 ;;
 ;; Part 4. Tree examples
@@ -243,43 +242,34 @@ Output: the same tree, but with labelled vertex times."
 ;; General selectors
 (defun left-subtree (tree)
   "Return the left subtree of tree. If tree is a leaf, return nil."
-  (if (nodep tree)
-      (second tree)
-      nil))
+  (if (nodep tree) (second tree) nil))
 (defun right-subtree (tree)
   "Return the right subtree of tree. If tree is a leaf, return nil."
-  (if (nodep tree)
-      (third tree)
-      nil))
+  (if (nodep tree) (third tree) nil))
 (defun get-vertex-name (tree)
   "Return the label of vertex. Works for both leaves and internal nodes."
-  (if (nodep tree)
-      (node-name tree)
-      (leaf-name tree)))
+  (if (nodep tree) (node-name tree) (leaf-name tree)))
 (defun get-dist-from-parent (tree)
   "Return the length of the edge connecting vertex to its parent. Works for both
 leaves and internal nodes."
-  (if (nodep tree)
-      (node-dist-from-parent tree)
-      (leaf-dist-from-parent tree)))
+  (if (nodep tree) (node-dist-from-parent tree) (leaf-dist-from-parent tree)))
 (defun get-mutation-rate (tree)
   "Return the mutation rate along the edge connecting vertex to its parent.
 Works for both leaves and internal nodes."
-  (if (nodep tree)
-      (node-mutation-rate tree)
-      (leaf-mutation-rate tree)))
+  (if (nodep tree) (node-mutation-rate tree) (leaf-mutation-rate tree)))
 (defun get-recomb-rate (tree)
   "Return the recombination rate along the edge connecting vertex to its parent.
 Works for both leaves and internal nodes."
-  (if (nodep tree)
-      (node-recombination-rate tree)
-      (leaf-recombination-rate tree)))
+  (if (nodep tree) (node-recombination-rate tree) (leaf-recombination-rate tree)))
 (defun get-vertex-time (tree)
   "Return the vertex time, i.e. the age of the vertex."
-  (if (leafp tree)
-      (first (second tree))
-      (first (second (first tree)))))
-
+  (if (leafp tree) (first (second tree)) (first (second (first tree)))))
+(defun get-population-start-time (tree)
+  "Return the start time of the edge extending from vertex to its parent. Equals time of vertex."
+  (get-vertex-time tree))
+(defun get-population-end-time (tree)
+  "Return the end time of the edge extending from vertext to its parent. Equals the vertex-time of the parent."
+  (+ (get-vertex-time tree) (get-dist-from-parent tree)))
 ;;______________________________________________________________________________
 ;;
 ;; Part 6. Mutation Simulator.
@@ -342,9 +332,9 @@ pair (label-name nucleotide)."
           (format t "leaf ~a: ~a ~%" vertex-name new-nucleotide))
       (list vertex-name new-nucleotide))))
 
-;; The next two functions are the workhorses of our simulator. They use the
-;; above functions to execute a tail-recursive implmentation of the JC69 process
-;; on the input tree.
+;; The next two functions are the workhorses of our sequence simulator. They use
+;; the above functions to recursively implement the JC69 process on the input
+;; tree.
 
 (defun evolve-down-tree (tree)
   "Recursive implmentation of JC69 on the tree. Starts with random nucleotide at
@@ -359,7 +349,8 @@ the root vertex to zero."
   "x is the accumulator variable use to construct the output list"
   (if (leafp tree)
       (cons (evolve-down-edge tree parent-nucleotide) x)
-      (let ((new-parent-nucleotide (second (evolve-down-edge tree parent-nucleotide))))
+      (let ((new-parent-nucleotide
+             (second (evolve-down-edge tree parent-nucleotide))))
         (evolve-down-tree-aux (left-subtree tree)
                               new-parent-nucleotide
                               (evolve-down-tree-aux (right-subtree tree)
@@ -367,18 +358,17 @@ the root vertex to zero."
                                                     x)))))
 
 ;; It works! Example usage:
-;; (evolve-down-tree *example-node*)
+;; (evolve-down-tree *n1*)
 
-
-;; the following function allows us to avoid the strange backticks like those
+;; The following function allows us to avoid the strange backticks like those
 ;; used in our original simulator, simulate-three-species
+
 (defun make-leaf-sample (i n-total-leaf-number k-sequence-length)
   "makes the i-th initial sample for a phylogenetic tree with a number of taxa
 equal to n-total-leaf-number, and when sequences are length k-sequence-length"
   (list (list (cons 0 (append (make-list (- i 1))
                               (cons (interval 1 k-sequence-length)
                                     (make-list (- n-total-leaf-number i))))))))
-
 
 (defun merge-output-edge-sets (child-1 child-2)
   "Combine the output edge sets child-1=(P_1,Q_1) and child-2=(P_2,Q_2) from two
@@ -389,14 +379,7 @@ other edge set."
   (list (union (first child-1) (first child-2))
         (union (second child-1) (second child-2))))
 
-
-(defun get-population-start-time (tree)
-  (get-vertex-time tree))
-(defun get-population-end-time (tree)
-  (+ (get-vertex-time tree)
-     (get-dist-from-parent tree)))
-
-;; this is the main simulator. It is currently running without error, but the
+;; This is the main simulator. It is currently running without error, but the
 ;; output is not correct. It looks like some of the subroutines borrowed from the earlier simulator need to be modified... Actually, I think I fixed those issues now. I need to make mscr into an auxillary function mscr-aux, and then write an intial function mscr which treats the root population differently (i.e. by setting 'stop-at-mrca' to true when calling 'build-single-population-arg'.
 (defparameter *leaf-number-tracker* 0)
 (defun mscr (n-total-leaf-number k-sequence-length tree edge-sets)
@@ -406,49 +389,43 @@ sequences in base pairs. The input 'leaf-number-tracker' tracks the leaf number:
 its initial value is 1? and it increments leaf-number-tracker by 1 each time a
 right subtree is recursively evaluated. The initial value of edge-sets should be
 nil, I think."
-  (build-single-population-arg (get-recomb-rate tree)           ; ρ
-                               (get-population-start-time tree) ; t_0
-                               (get-population-end-time tree)   ; t_end
-                               k-sequence-length
-                               (if (leafp tree)
-                                   (make-leaf-sample (progn
-                                                       (print *leaf-number-tracker*)
-                                                       (incf *leaf-number-tracker*))
-                                                     n-total-leaf-number
-                                                     k-sequence-length)
-                                   (merge-output-edge-sets
-                                    (mscr n-total-leaf-number
-                                          k-sequence-length
-                                          (left-subtree tree)
-                                          edge-sets) ; is this right?
-                                    (mscr n-total-leaf-number
-                                          k-sequence-length
-                                          (right-subtree tree)
-                                          edge-sets)))))
+  (build-single-population-arg
+   (get-recomb-rate tree)           ; ρ
+   (get-population-start-time tree) ; t_0
+   (get-population-end-time tree)   ; t_end
+   k-sequence-length
+   (if (leafp tree)
+       (make-leaf-sample (incf *leaf-number-tracker*)
+                         n-total-leaf-number
+                         k-sequence-length)
+       (merge-output-edge-sets (mscr n-total-leaf-number
+                                     k-sequence-length
+                                     (left-subtree tree)
+                                     edge-sets) 
+                               (mscr n-total-leaf-number
+                                     k-sequence-length
+                                     (right-subtree tree)
+                                     edge-sets)))))
 
-; this is the auxillary function to the main simulator. It is analogous to
+; This is the auxillary function to the main simulator. It is analogous to
 ; 'arg-builder' in the previous work
 (defun build-single-population-arg (ρ t_0 t_end k-sequence-length edge-sets &optional (stop-at-mrca nil))
   "Build an ancestral recombination graph in a single population with fixed
 start time t_0 and end time t_end."
   (let* ((number-of-active-lineages (get-number-of-active-lineages edge-sets))
-	 (coales-rate (* .5 number-of-active-lineages (- number-of-active-lineages 1)))
+	 (coales-rate (* .5 number-of-active-lineages
+                         (- number-of-active-lineages 1)))
 	 (recomb-rate (* .5 number-of-active-lineages ρ))
 	 (total-rate (+ coales-rate recomb-rate))
 	 (t_1 (+ t_0 (draw-exponential total-rate))))
     (if (or (> t_1 t_end) (and stop-at-mrca (= number-of-active-lineages 1)))
 	edge-sets
-	(build-single-population-arg
-         ρ
-         t_1
-         t_end
+	(build-single-population-arg ρ t_1 t_end
          k-sequence-length
 	 (if (< (random 1d0) (/ recomb-rate total-rate))
 	     (implement-recombination t_1 edge-sets k-sequence-length)
 	     (implement-coalescence t_1 edge-sets))
 	 stop-at-mrca))))
-
-
 
 (defun get-number-of-active-lineages (edge-sets)
   "Determine how many lineages are 'active' in a population (a lineage is active
@@ -458,17 +435,3 @@ In general, active lineages are stored in P and inactive lineages are stored in
 Q. I can't remember off the top of my head but there might be an exception to
 this rule.)"
   (length (first edge-sets)))
-
-
-
-;; (defun fast-bin-tree-preorder (tree)
-;;   "A tail-recursive version of bin-tree-preorder. Source:
-;; https://www2.cs.sfu.ca/CourseCentral/310/pwfong/Lisp/3/tutorial3.html"
-;;   (preorder-aux tree nil))
-
-;; (defun list-leaves-aux (tree x)
-;;   "recursively build a list of leaf names of tree. the accumulator variable is x. Source: https://www2.cs.sfu.ca/CourseCentral/310/pwfong/Lisp/3/tutorial3.html"
-;;   (if (leafp tree)
-;;       (cons (leaf-name tree) x)
-;;       (cons (list-leaves-aux (right-subtree tree)
-;;                              (list-leaves-aux (left-subtree tree) x)))))
