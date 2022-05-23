@@ -257,8 +257,10 @@ the given time."
 			     (cons recombination-child nil)
 			     (first edge-sets))))))
     (progn
-;      (format t "~%~%RECOMBINATION at time ~a~%One child edge removed: ~a~%Two parent edges added: ~a~%                        ~a"
-;	      time recombination-child (first recombination-parents) (second recombination-parents))
+      (format t "~%~%RECOMBINATION at time ~a~%One child edge removed: ~a~%Two parent edges added: ~a~%                        ~a"
+              time recombination-child
+              (first recombination-parents)
+              (second recombination-parents))
       (list new-p (second edge-sets)))))
 
 
@@ -267,7 +269,7 @@ the given time."
 containing the left and right parent, where the left (right) parent contains
 only genetic labels less than or equal to (greater than) the breakpoint. Working
 example: (make-recombination-parents .3 `(.1 ,(interval 1 7) ,(interval 3 6)
-,(interval 2 10)) 10)"
+,(interval 2 10)) 7)"
   (let* ((paired-list
 	   (mapcar
 	    #'(lambda (label-set)
@@ -280,16 +282,26 @@ example: (make-recombination-parents .3 `(.1 ,(interval 1 7) ,(interval 3 6)
      (cons time (mapcar #'first paired-list))
      (cons time (mapcar #'second paired-list)))))
 
+;; (defun make-coalescent-parent (time coalescing-pair)
+;;   "Creates parent edge of two coalescing edges. The input coalescing-edges is of
+;; the form (x y) where x and y are the edges"
+;;   (let ((edge1 (first coalescing-pair))
+;; 	(edge2 (second coalescing-pair)))
+;;     (list time
+;; 	  (union (second edge1) (second edge2))
+;; 	  (union (third edge1) (third edge2))
+;; 	  (union (fourth edge1) (fourth edge2)))))
+
+;; Commented out the old verison (directly above) and rewrote it to not assume that there are only three samples. 2022-05-22
 (defun make-coalescent-parent (time coalescing-pair)
   "Creates parent edge of two coalescing edges. The input coalescing-edges is of
 the form (x y) where x and y are the edges"
   (let ((edge1 (first coalescing-pair))
 	(edge2 (second coalescing-pair)))
-    (list time
-	  (union (second edge1) (second edge2))
-	  (union (third edge1) (third edge2))
-	  (union (fourth edge1) (fourth edge2)))))
-
+    (cons time
+          (loop for i from 1 to (1- (length edge1))
+                collecting (union (nth i edge1) (nth i edge2)) into x
+                finally (return x)))))
 
 (defun implement-coalescence (time edge-sets)
   "Updates the edge-sets (p,q) appropriately for when a recombination occurs at
