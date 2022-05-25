@@ -119,24 +119,20 @@ should be trees (i.e., either nodes or leafs, but not nil)."
 (defun leafp (tree)
   "Return t if tree is a leaf and nil otherwise. Does not distinguish between
 leaves with/without vertex times."
-  (if (and (listp tree)
-           (= 2 (length tree))
-           (stringp (first tree))
-           (listp (second tree)))
-      t
-      nil))
-
+  (and (listp tree)
+       (= 2 (length tree))
+       (stringp (first tree))
+       (listp (second tree))))
+  
 (defun nodep (tree)
   "Return t if tree is a node and nil otherwise. Does not distinguish between
   leaves with/without vertex times."
-  (if (and (listp tree)
-           (= 3 (length tree))
-           (or (nodep (second tree))
-               (leafp (second tree)))
-           (or (nodep (third tree))
-               (leafp (third tree))))
-      t
-      nil))
+  (and (listp tree)
+       (= 3 (length tree))
+       (or (nodep (second tree))
+           (leafp (second tree)))
+       (or (nodep (third tree))
+           (leafp (third tree)))))
 
 ;;______________________________________________________________________________
 ;;
@@ -164,6 +160,37 @@ Works for both leaves and nodes."
 nodes. For leaves, it returns the leaf label. For nodes, it returns the name of
 the node."
   (first (if (leafp tree) tree (first tree))))
+
+(defun parent-test (tree child-name)
+  "Test if tree is the parent of the subtree with top vertex labeled child-name."
+  (or (equal (get-vertex-name (left-subtree tree))
+             child-name)
+      (equal (get-vertex-name (right-subtree tree))
+             child-name)))
+      
+(defun get-parent (tree child-name)
+  "Returns the parent node of the vertex with label child-name, which is a
+string. Usage: (get-parent *n3* ``ab'')."
+  (cond ((leafp tree) nil)
+        ((parent-test tree child-name) tree)
+        (t (append (get-parent (left-subtree tree) child-name)
+                   (get-parent (right-subtree tree) child-name)))))
+
+
+
+(defun get-parent (tree child-name)
+  "Returns the parent node of the vertex with label child-name, which is a
+string. Usage: (get-parent *n3* ``ab''). To understand this recursive function,
+one needs to understand two properties of cond: first, cond terminates when the
+first condition (evaluated in order) evaluates to a non-nil result. Second, if
+test1 is nonnil, then a cond condition of the form ((test1)) returns the value
+of test1."
+  (cond ((leafp tree) nil)
+        ((or (equal (get-vertex-name (left-subtree tree)) child-name)
+             (equal (get-vertex-name (right-subtree tree)) child-name))
+         tree)
+        ((get-parent (left-subtree tree) child-name))
+        ((get-parent (right-subtree tree) child-name))));
 
 ;;______________________________________________________________________________
 ;;
@@ -249,9 +276,10 @@ not be entered by the user. Usage: (add-age-parameters-to-tree tree)"
              (right-subtree tree)
              (- parent-age (get-parameter :dist-from-parent tree))))))
 
-
-;; Hmm, I should consider defining the tree object so that children point to
-;; their parents... or at least to their parent labels.
+;; Hmm, I should consider defining the tree objects so that child nodes point to
+;; their parents... a recursive data structure. Possibly could implement it in a
+;; lazy manner, but this would take a lot of time to figure out how to implement
+;; in lisp, which unfortunately I don't have.
 
 
 
@@ -260,13 +288,13 @@ not be entered by the user. Usage: (add-age-parameters-to-tree tree)"
 ;; Part 4. Tree examples for testing
 ;;______________________________________________________________________________
 ;; From here on we will assume that all trees have vertex times, i.e. were
-;; processed with the function 'add-vertex-times-to-tree'
+;; processed with the function 'add-age-parameters-to-tree'
 
 ;; Example 1. A leaf
 (defparameter *l1*
   (make-leaf "A" .1 1 4))
 (defparameter *lv1*
-  (add-vertex-times-to-tree *l1*))
+  (add-age-parameters-to-tree *l1*))
 
 ;; Example 2. A node (unbalanced quartet):
 (defparameter *n1*
@@ -277,7 +305,7 @@ not be entered by the user. Usage: (add-age-parameters-to-tree tree)"
                                    (make-leaf "B" .1 1 1))
                         (make-leaf "C" .1 1.3 0))
              (make-leaf "D" 4 1.1 0)))
-(defparameter *nv1* (add-vertex-times-to-tree *n1*))
+(defparameter *nv1* (add-age-parameters-to-tree *n1*))
 
 ;; Example 3. A node (unbalanced quartet):
 (defparameter *n2*
@@ -288,7 +316,7 @@ not be entered by the user. Usage: (add-age-parameters-to-tree tree)"
                                    (make-leaf "B" .1 1 1))
                         (make-leaf "C" .1 1.3 0))
              (make-leaf "D" 4 1.1 0)))
-(defparameter *nv2* (add-vertex-times-to-tree *n2*))
+(defparameter *nv2* (add-age-parameters-to-tree *n2*))
 
 ;; Example 4. A node (balanced quartet):
 (defparameter *n3*
@@ -299,7 +327,7 @@ not be entered by the user. Usage: (add-age-parameters-to-tree tree)"
              (make-node "cd" 1 .1 .2
                         (make-leaf "c" 3 .1 .2)
                         (make-leaf "d" 2 .1 .2))))
-(defparameter *nv3* (add-vertex-times-to-tree *n3*))
+(defparameter *nv3* (add-age-parameters-to-tree *n3*))
 
 ;; Example 5. Three taxa example
 (defparameter *3-taxa-example* '(("abc" (4 999 1 0))
@@ -314,7 +342,18 @@ not be entered by the user. Usage: (add-age-parameters-to-tree tree)"
                      ("b" (.4 0.1 0.2)))
                     ("c" (.8 1 0))))
 
-
+(defparameter *bigbad*
+    (make-node "root" 1 2 3
+               (make-node "ABC" 1 2 3 
+                          (make-node "AB" 1 2 3
+                                     (make-leaf "A" 1 2 3)
+                                     (make-leaf "B" 1 2 3))
+                          (make-leaf "C" 1 2 3))
+               (make-node "D123" 1 2 3
+                          (make-node "D12" 1 2 3
+                                     (make-leaf "D1" 1 2 3)
+                                     (make-leaf "D2" 1 2 3))
+                          (make-leaf "D3" 1 2 3))))
 
 ;;______________________________________________________________________________
 ;;
@@ -453,9 +492,17 @@ nil, I think."
                                      (right-subtree tree)
                                      edge-sets)))))
 
-;; ---------------  WORKS WELL UP TO HERE ----------------------
-;;
-;;
+(defun get-number-of-active-lineages (edge-sets)
+  "Determine how many lineages are 'active' in a population (a lineage is active
+if it is a candidate for coalescence. Recall that when a lineage undergoes
+recombination, it is rendered inactive, but two new active lineages are created.
+In general, active lineages are stored in P and inactive lineages are stored in
+Q. I can't remember off the top of my head but there might be an exception to
+this rule.)"
+  (length (first edge-sets)))
+
+;; Load functions from old simulator
+(load "/home/ultralisk/MSCR-simulator/scripts/simulator.lisp")
 
 ; This is the auxillary function to the main simulator. It is analogous to
 ; 'arg-builder' in the previous work
@@ -476,12 +523,3 @@ start time t_0 and end time t_end."
 	     (implement-recombination t_1 edge-sets k-sequence-length)
 	     (implement-coalescence t_1 edge-sets))
 	 stop-at-mrca))))
-
-(defun get-number-of-active-lineages (edge-sets)
-  "Determine how many lineages are 'active' in a population (a lineage is active
-if it is a candidate for coalescence. Recall that when a lineage undergoes
-recombination, it is rendered inactive, but two new active lineages are created.
-In general, active lineages are stored in P and inactive lineages are stored in
-Q. I can't remember off the top of my head but there might be an exception to
-this rule.)"
-  (length (first edge-sets)))
