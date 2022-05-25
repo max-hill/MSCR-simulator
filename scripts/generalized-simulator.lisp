@@ -3,7 +3,7 @@
 ;;;;                                construction.
 ;; 
 ;; Author: max hill 
-;; (Last updated 2022-05-22)
+;; (Last updated 2022-05-24)
 
 ;; DESCRIPTION: Here we attempt to implement a simulator which takes as input a
 ;; binary tree T (ideally in newick tree format, with branch lengths) and output
@@ -57,22 +57,59 @@
 ;;
 ;; 2. A *node* is a list with three components: a leaf, a left subtree and a
 ;;    right subtree: (:leaf :left-subtree :right-subtree).
+;;
+;; The following discussion assumes that the leaves of the tree are at the
+;; bottom and the root is at the top.
+;;
+;; - :recomb-rate is the rate of recombination along the edge extending upward
+;;   from the tree's top vertex.
+;;
+;; - :mutation-rate is the mutation rate along the edge extending upward from
+;;   the tree's top vertex
+;;
+;; - :dis-from-parent is the length of the edge connecting the vertex to its
+;;   parent.
+;;
+;; - :vertex-age is the age of the vertex
 
 (defun make-leaf (leaf-label distance-from-parent mutation-rate recombination-rate)
-  "Create a leaf. Leaf-label should be a string. Distance-from-parent should be
-a number."
+  "Create a leaf. Leaf-label should be a string. The other input parameters
+should be numbers."
   `(,leaf-label
-    (,distance-from-parent
-     ,mutation-rate
-     ,recombination-rate)))
+    ((:dist-from-parent . ,distance-from-parent)
+     (:mutation-rate . ,mutation-rate)
+     (:recomb-rate . ,recombination-rate))))
 
 (defun make-node (node-label distance-from-parent mutation-rate
                   recombination-rate left-subtree right-subtree)
-  "Create a node. Node-label should be a string, distance-from-parent should be
-a number, and the subtrees should be trees (either nodes or leafs, but not nil."
-  `((,node-label (,distance-from-parent ,mutation-rate ,recombination-rate))
+  "Create a node. Node-label should be a string, distance-from-parent,
+mutation-rate, and recomb-rate should be numbers, and the subtrees subtrees
+should be trees (i.e., either nodes or leafs, but not nil)."
+  `((,node-label
+     ((:dist-from-parent . ,distance-from-parent)
+      (:mutation-rate . ,mutation-rate)
+      (:recomb-rate . ,recombination-rate)))
     ,left-subtree
     ,right-subtree))
+
+
+;; (defun make-leaf (leaf-label distance-from-parent mutation-rate recombination-rate)
+;;   "Create a leaf. Leaf-label should be a string. Distance-from-parent should be
+;; a number."
+;;   `(,leaf-label
+;;     (,distance-from-parent
+;;      ,mutation-rate
+;;      ,recombination-rate)))
+
+;; (defun make-node (node-label distance-from-parent mutation-rate
+;;                   recombination-rate left-subtree right-subtree)
+;;   "Create a node. Node-label should be a string, distance-from-parent should be
+;; a number, and the subtrees should be trees (either nodes or leafs, but not nil."
+;;   `((,node-label (,distance-from-parent ,mutation-rate ,recombination-rate))
+;;     ,left-subtree
+;;     ,right-subtree))
+
+
 
 ;;______________________________________________________________________________
 ;;
@@ -85,9 +122,7 @@ leaves with/without vertex times."
   (if (and (listp tree)
            (= 2 (length tree))
            (stringp (first tree))
-           (listp (second tree))
-           (or (= 4 (length (second tree)))
-               (= 3 (length (second tree)))))
+           (listp (second tree)))
       t
       nil))
 
@@ -105,56 +140,124 @@ leaves with/without vertex times."
 
 ;;______________________________________________________________________________
 ;;
-;; Part 3. Add vertex times to the trees
+;; Part 2. Selectors
 ;;______________________________________________________________________________
 
-(defun get-edge-parameters (tree)
-  "Return the list of parameters corresponding to the edge above the vertex"
+(defmacro get-parameter (parameter tree)
+  "Retrieve specific parameters from a tree node. Example usage: (get-parameter
+:mutation-rate *nv1*)"
+  `(cdr (assoc ,parameter (get-parameter-alist ,tree))))
+(defun get-parameter-alist (tree)
+  "Retrieve the parameter alist for the vertex at the top of the input tree.
+Works for both leaves and nodes."
   (if (leafp tree)
       (second tree)
       (second (first tree))))
-
-(defun add-vertex-time (tree parent-age)
-  "Adds the vertex time to a leaf object."
-  (list (get-vertex-name tree)
-        (cons (- parent-age (get-dist-from-parent tree))
-              (get-edge-parameters tree))))
-
-(defun add-vertex-times-to-tree-aux (tree parent-age)
-  "Recursive auxilliary function for the function add-vertex-times-to-tree."
-  (if (leafp tree)
-      (add-vertex-time tree parent-age)
-      (list (add-vertex-time tree parent-age)
-            (add-vertex-times-to-tree-aux (left-subtree tree)
-                                          (- parent-age
-                                             (get-dist-from-parent tree)))
-            (add-vertex-times-to-tree-aux (right-subtree tree)
-                                          (- parent-age
-                                             (get-dist-from-parent tree))))))
-
-(defun get-total-tree-height (tree)
-  "Returns the total height of the tree, i.e. from the top of the root edge to
-the maximally distant leaf."
-  (get-tree-height-aux tree 0))
-
-(defun get-tree-height-aux (tree accumulator)
-  "Returns the total height of the tree, i.e. the length of the maximumal path
-from the vertex to one of its leaves"
-  (if (leafp tree)
-      (+ accumulator (get-dist-from-parent tree))
-      (max (get-tree-height-aux (right-subtree tree)
-                                (+ accumulator (get-dist-from-parent tree)))
-           (get-tree-height-aux (left-subtree tree)
-                                (+ accumulator (get-dist-from-parent tree))))))
-
-(defun add-vertex-times-to-tree (tree)
-  "Input: a tree constructed with the functions 'make-node' and 'make-leaf'.
-Output: the same tree, but with labelled vertex times."
-  (add-vertex-times-to-tree-aux tree (get-total-tree-height tree)))
+(defun left-subtree (tree)
+  "Return the left subtree of tree. If tree is a leaf, return nil."
+  (if (leafp tree) nil (second tree)))
+(defun right-subtree (tree)
+  "Return the right subtree of tree. If tree is a leaf, return nil."
+  (if (leafp tree) nil (third tree)))
+(defun get-vertex-name (tree)
+  "Return the name (i.e. label) of vertex. Works for both leaves and internal
+nodes. For leaves, it returns the leaf label. For nodes, it returns the name of
+the node."
+  (first (if (leafp tree) tree (first tree))))
 
 ;;______________________________________________________________________________
 ;;
-;; Part 4. Tree examples
+;; Part 3. Add vertex times to the trees
+;;______________________________________________________________________________
+
+;; The next function computes the total height of a tree.
+(defun get-tree-height (tree &optional (x nil))
+  "Return the total height of the tree, i.e. from the top of the root edge to
+  the maximally distant leaf. Note: the optional variable x is an auxilliary
+  variable used to add up the total height of the tree over recursive calls; it
+  is used for the recursion and should not be specified by the user.
+  Usage: (get-tree-height tree)"
+  (if (null x)
+      (get-tree-height tree 0)
+      (if (leafp tree)
+          (+ x (get-parameter :dist-from-parent tree))
+          (max (get-tree-height (right-subtree tree)
+                (+ x (get-parameter :dist-from-parent tree)))
+               (get-tree-height (left-subtree tree)
+                (+ x (get-parameter :dist-from-parent tree)))))))
+
+;; ;; We need the following auxilliary function.
+;; (defun add-age-parameters-to-leaf (tree parent-age)
+;;   "Cons (add) the population start and end times to the parameter alist of a leaf object. Note that the population-start-time is the age of the vertex, and the population-end-time is the age of its parent."
+;;   (list (get-vertex-name tree)
+;;         (acons :population-end-time parent-age
+;;                (acons :population-start-time
+;;                       (- parent-age (get-parameter :dist-from-parent tree))
+;;                       (get-parameter-alist tree)))))
+
+;; ;; The next function computes vertex times for a tree and outputs a new tree
+;; ;; containing vertex times in the vertex parameter lists.
+;; (defun add-age-parameters-to-tree (tree
+;;                                  &optional (parent-age
+;;                                             (get-tree-height tree)))
+;;   "Input: a tree constructed with the functions 'make-node' and 'make-leaf'.
+;; Output: the same tree, but with labelled vertex times, in the form of two
+;; parameters: population-start-time and population-end-time. Here we regard the
+;; edge extending up from the vertex to be a 'population.' Hence, the
+;; population-start-time is the age of the vertex, and the population-end-time is
+;; the age of its parent. The optional variable is used for recursion and should
+;; not be entered by the user. Usage: (add-age-parameters-to-tree tree)"
+;;   (if (leafp tree)
+;;       (add-age-parameters-to-leaf tree parent-age)
+;;       (list (add-age-parameters-to-leaf tree parent-age)
+;;             (add-age-parameters-to-tree
+;;              (left-subtree tree)
+;;              (- parent-age (get-parameter :dist-from-parent tree)))
+;;             (add-age-parameters-to-tree
+;;              (right-subtree tree)
+;;              (- parent-age (get-parameter :dist-from-parent tree))))))
+
+
+;; We need the following auxilliary function.
+(defun add-age-parameters-to-leaf (tree parent-age)
+  "Cons (add) the population start and end times to the parameter alist of a leaf object. Note that the population-start-time is the age of the vertex, and the population-end-time is the age of its parent."
+  (list (get-vertex-name tree)
+        (acons :population-end-time parent-age
+               (acons :population-start-time
+                      (- parent-age (get-parameter :dist-from-parent tree))
+                      (get-parameter-alist tree)))))
+
+;; The next function computes vertex times for a tree and outputs a new tree
+;; containing vertex times in the vertex parameter lists.
+(defun add-age-parameters-to-tree (tree
+                                   &optional (parent-age
+                                              (get-tree-height tree)))
+  "Input: a tree constructed with the functions 'make-node' and 'make-leaf'.
+Output: the same tree, but with labelled vertex times, in the form of two
+parameters: population-start-time and population-end-time. Here we regard the
+edge extending up from the vertex to be a 'population.' Hence, the
+population-start-time is the age of the vertex, and the population-end-time is
+the age of its parent. The optional variable is used for recursion and should
+not be entered by the user. Usage: (add-age-parameters-to-tree tree)"
+  (if (leafp tree)
+      (add-age-parameters-to-leaf tree parent-age)
+      (list (add-age-parameters-to-leaf tree parent-age)
+            (add-age-parameters-to-tree
+             (left-subtree tree)
+             (- parent-age (get-parameter :dist-from-parent tree)))
+            (add-age-parameters-to-tree
+             (right-subtree tree)
+             (- parent-age (get-parameter :dist-from-parent tree))))))
+
+
+;; Hmm, I should consider defining the tree object so that children point to
+;; their parents... or at least to their parent labels.
+
+
+
+;;______________________________________________________________________________
+;;
+;; Part 4. Tree examples for testing
 ;;______________________________________________________________________________
 ;; From here on we will assume that all trees have vertex times, i.e. were
 ;; processed with the function 'add-vertex-times-to-tree'
@@ -205,71 +308,14 @@ Output: the same tree, but with labelled vertex times."
                                   ("b" (0 2 0.1 0.2)))
                                  ("c" (0 4 1 0))))
 
-;;______________________________________________________________________________
-;;
-;; Part 5. More Selectors
-;;______________________________________________________________________________
-;; all these assume that the tree contains vertex times
+(defparameter *t* '(("abc" (0 1 0))
+                    (("ab" (.9 0.1 0.2))
+                     ("a" (.5 0.1 0.2))
+                     ("b" (.4 0.1 0.2)))
+                    ("c" (.8 1 0))))
 
-;; Leaf-specific selectors
-(defun leaf-name (leaf)
-  "Return name of leaf."
-  (first leaf))
-(defun leaf-dist-from-parent (leaf)
-  "Return distance of leaf from its parent."
-  (second (second leaf)))
-(defun leaf-mutation-rate (leaf)
-  "Return the mutation rate on the edge from leaf to its parent."
-  (third (second leaf)))
-(defun leaf-recombination-rate (leaf)
-  "Return the recombination rate on the edge from leaf to its parent."
-  (fourth(second leaf)))
 
-;; Node-specific selectors
-(defun node-name (node)
-  "Return the name (i.e. label) of node."
-  (first (first node)))
-(defun node-dist-from-parent (node)
-  "Return the length of the edge connecting node to its parent."
-  (leaf-dist-from-parent (first node)))
-(defun node-mutation-rate (node)
-  "Return the mutation rate of the edge connecting node to its parent."
-  (leaf-mutation-rate (first node)))
-(defun node-recombination-rate (node)
-  "Return the recombination rate of the edge connecting node to its parent."
-  (leaf-recombination-rate (first node)))
 
-;; General selectors
-(defun left-subtree (tree)
-  "Return the left subtree of tree. If tree is a leaf, return nil."
-  (if (nodep tree) (second tree) nil))
-(defun right-subtree (tree)
-  "Return the right subtree of tree. If tree is a leaf, return nil."
-  (if (nodep tree) (third tree) nil))
-(defun get-vertex-name (tree)
-  "Return the label of vertex. Works for both leaves and internal nodes."
-  (if (nodep tree) (node-name tree) (leaf-name tree)))
-(defun get-dist-from-parent (tree)
-  "Return the length of the edge connecting vertex to its parent. Works for both
-leaves and internal nodes."
-  (if (nodep tree) (node-dist-from-parent tree) (leaf-dist-from-parent tree)))
-(defun get-mutation-rate (tree)
-  "Return the mutation rate along the edge connecting vertex to its parent.
-Works for both leaves and internal nodes."
-  (if (nodep tree) (node-mutation-rate tree) (leaf-mutation-rate tree)))
-(defun get-recomb-rate (tree)
-  "Return the recombination rate along the edge connecting vertex to its parent.
-Works for both leaves and internal nodes."
-  (if (nodep tree) (node-recombination-rate tree) (leaf-recombination-rate tree)))
-(defun get-vertex-time (tree)
-  "Return the vertex time, i.e. the age of the vertex."
-  (if (leafp tree) (first (second tree)) (first (second (first tree)))))
-(defun get-population-start-time (tree)
-  "Return the start time of the edge extending from vertex to its parent. Equals time of vertex."
-  (get-vertex-time tree))
-(defun get-population-end-time (tree)
-  "Return the end time of the edge extending from vertext to its parent. Equals the vertex-time of the parent."
-  (+ (get-vertex-time tree) (get-dist-from-parent tree)))
 ;;______________________________________________________________________________
 ;;
 ;; Part 6. Mutation Simulator.
@@ -318,8 +364,8 @@ specified in Dasarathy, Mossel, Nowak, Roch 'Coalescent-based species tree
 estimation: a stochastic Farris transform'. Output takes the form of a
 pair (label-name nucleotide)."
   (let* ((vertex-name (get-vertex-name tree))
-         (edge-length (get-dist-from-parent tree))
-         (mutation-rate (get-mutation-rate tree))
+         (edge-length (get-parameter :dist-from-parent tree))
+         (mutation-rate (get-parameter :mutation-rate tree))
          (substitution-probability
            (* .75 (- 1 (exp (* (/ -4 3) mutation-rate edge-length)))))
          (new-nucleotide (if (< (random 1d0) substitution-probability)
@@ -390,9 +436,9 @@ its initial value is 1? and it increments leaf-number-tracker by 1 each time a
 right subtree is recursively evaluated. The initial value of edge-sets should be
 nil, I think."
   (build-single-population-arg
-   (get-recomb-rate tree)           ; ρ
-   (get-population-start-time tree) ; t_0
-   (get-population-end-time tree)   ; t_end
+   (get-parameter :recomb-rate tree)           ; ρ
+   (get-parameter :population-start-time tree) ; t_0
+   (get-parameter :population-end-time tree)   ; t_end
    k-sequence-length
    (if (leafp tree)
        (make-leaf-sample (incf *leaf-number-tracker*)
@@ -406,6 +452,10 @@ nil, I think."
                                      k-sequence-length
                                      (right-subtree tree)
                                      edge-sets)))))
+
+;; ---------------  WORKS WELL UP TO HERE ----------------------
+;;
+;;
 
 ; This is the auxillary function to the main simulator. It is analogous to
 ; 'arg-builder' in the previous work
