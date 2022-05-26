@@ -245,7 +245,8 @@ integration)."
 ;; t_end), which ends the simulation.
 
 
-(defun implement-recombination (time edge-sets number-of-base-pairs)
+(defun implement-recombination (time edge-sets number-of-base-pairs
+                                &optional (population-name nil))
   "Updates the edge-sets (p,q) appropriately for when a coalescence occurs at
 the given time."
   (let* ((recombination-child (randomly-choose (first edge-sets)))
@@ -257,7 +258,8 @@ the given time."
 			     (cons recombination-child nil)
 			     (first edge-sets))))))
     (progn
-      (format t "~%~%RECOMBINATION at time ~a~%One child edge removed: ~a~%Two parent edges added: ~a~%                        ~a"
+      (format t "~%~%RECOMBINATION in ~a at time ~a~%One child edge removed: ~a~%Two parent edges added: ~a~%                        ~a"
+              population-name
               time recombination-child
               (first recombination-parents)
               (second recombination-parents))
@@ -303,7 +305,7 @@ the form (x y) where x and y are the edges"
                 collecting (union (nth i edge1) (nth i edge2)) into x
                 finally (return x)))))
 
-(defun implement-coalescence (time edge-sets)
+(defun implement-coalescence (time edge-sets &optional (population-name nil))
   "Updates the edge-sets (p,q) appropriately for when a recombination occurs at
 the given time."
   (let* ((coalescing-pair (randomly-choose (first edge-sets) 2))
@@ -311,8 +313,8 @@ the given time."
 	 (new-p (remove-elements coalescing-pair (cons coalescent-parent (first edge-sets))))
 	 (new-q (cons coalescent-parent (second edge-sets))))
     (progn
-      (format t "~%~%COALESCENCE at time ~a~%Two child edges removed: ~a~%                         ~a~%One parent edge created: ~a"
-	      time (first coalescing-pair) (second coalescing-pair) coalescent-parent)
+      (format t "~%~%COALESCENCE in ~a at time ~a~%Two child edges removed: ~a~%                         ~a~%One parent edge created: ~a"
+              population-name time (first coalescing-pair) (second coalescing-pair) coalescent-parent)
       (list new-p new-q))))
 
 
