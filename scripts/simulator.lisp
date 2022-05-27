@@ -211,7 +211,9 @@ integration)."
 	edge-sets
 	(arg-builder ρ t_1 t_end number-of-base-pairs
 		     (if (< (random 1d0) (/ recomb-rate total-rate))
-			 (implement-recombination t_1 edge-sets number-of-base-pairs)
+			 (implement-recombination t_1
+                                                  edge-sets
+                                                  number-of-base-pairs)
 			 (implement-coalescence t_1 edge-sets))
 		     stop-at-mrca))))
 

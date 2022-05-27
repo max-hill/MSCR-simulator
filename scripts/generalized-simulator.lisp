@@ -102,7 +102,8 @@ should be trees (i.e., either nodes or leafs, but not nil)."
 leaves with/without vertex times."
   (and (listp tree)
        (= 2 (length tree))
-       (stringp (first tree))
+       (or (stringp (first tree))
+           (listp (first tree)))
        (listp (second tree))))
   
 (defun nodep (tree)
@@ -543,8 +544,147 @@ nil, I think."
                                             ; terminating correctly?
 
 
+;; ((4.584407128516051d0 (1) (1) (1) (1))
+;;  (4.497471958701756d0 NIL NIL (1) NIL)
+;;  (4.025203326294506d0 (1) (1) NIL (1))
+;;  (2.693733411688349d0 (1) (1) NIL NIL))
 
-(defun construct-marginal-gene-tree (site-number species-tree output-edges)
+;; ((4.584407128516051d0 (2) (2) (2) (2))
+;;  (4.497471958701756d0 NIL NIL (2) NIL)
+;;  (4.025203326294506d0 (2) (2) NIL (2))
+;;  (2.693733411688349d0 (2) (2) NIL NIL))
+
+1: (0 2.7 4.0 4.6) 
+2: (0 2.7 4.0 4.6)
+4: (1 4.0 4.6)
+3: (0 4.6)
+
+;; The following function will be used to convert our time matrix into input for
+;; the Jukes-Cantor process. 
+
+(defun who-coalesced (time-matrix coal-time n-number-of-species)
+  "Return the set of leaf labels whose ancestral lineages underwent coalesence
+at the given coalescence time. Might be better named by something like 'common-ancestor' or 'population-name'"
+  (loop for i from 1 to (1- n-number-of-species)
+        appending (loop for j from (1+ i) to n-number-of-species
+                        if (= (get-matrix-entry time-matrix i j) coal-time)
+                          collect i into inner-output
+                          and collect j into inner-output
+                        finally (return inner-output))
+          into outer-output
+        finally (return (remove-duplicates outer-output))))
+
+;; To use the above function, we will need a descending list of coalescent
+;; times.
+
+(defun get-list-of-coal-times (time-matrix n-number-of-species)
+  "Return a sorted (descending) set of coalescent times for the n species whose
+times are give by time-matrix."
+  (loop for row from 1 to (1- n-number-of-species)
+        appending (loop for column from (1+ row) to n-number-of-species
+                        collecting (get-matrix-entry time-matrix row column)
+                          into inner-output
+                        finally (return inner-output))
+          into outer-output
+        finally (return (sort (remove-duplicates outer-output)
+                              '>))))
+
+
+(get-list-of-coal-times *time-matrix* 4)
+(defparameter *ct* '(4.584407128516051d0 4.025203326294506d0 2.693733411688349d0))
+(who-coalesced *time-matrix* (third (get-list-of-coal-times *time-matrix* 4)) 4)
+(who-coalesced *time-matrix* (second (get-list-of-coal-times *time-matrix* 4)) 4)
+(who-coalesced *time-matrix* (first (get-list-of-coal-times *time-matrix* 4)) 4)
+
+(defun make-marginal-tree (descending-coal-times time-matrix n)
+  (if (= 1 (length (who-coalesced *time-matrix* (first descending-coal-times) n)
+      (make-leaf descending-coal-times 1 .1 0)
+      (let* ((current-lineage
+               (who-coalesced *time-matrix* (first descending-coal-times) n))
+             (left-lineage
+               (who-coalesced *time-matrix* (second descending-coal-times) n))
+             (right-lineage
+               (set-difference current-lineage right-lineage)))
+        (make-node current-lineage 1 .1 0
+                   (make-marginal-tree left-lineage time-matrix n)
+                   (make-marginal-tree right-lineage time-matrix n)))))
+
+
+;; Essentially, we want to make something like this:
+;; (make-node 
+;;  "1234" 0 .1 0 
+;;  (make-node 
+;;   "124" 
+;;   (- 4.584407128516051d0 4.025203326294506d0)
+;;   0.1 0 
+;;   (make-node 
+;;    "12" 
+;;    (- 4.025203326294506d0 2.693733411688349d0)
+;;    .1 0
+;;    (make-leaf "1" 0 .1 0)
+;;    (make-leaf "2" 0 .1 0))
+;;   (make-leaf
+;;    "4"
+;;    (- 4.025203326294506d0 1)
+;;    .1 0))
+;;  (make-leaf
+;;   "3"
+;;   (- 4.584407128516051d0 0)
+;;   .1 0))
+
+(defun build-marginal-tree (time-matrix n-number-of-species list-of-descending-coal-times)
+  (if ))
+
+1. Make a list of coalescent times in ascending order for each leaf
+2. Do we also include the leaf start times?
+
+(defun get-matrix-entry (matrix row column)
+  "Retrieve an entry of an array as if it were a matrix (indexing starts at 1)."
+  (aref matrix (1- row) (1- column)))
+
+;; ((4.584407128516051d0 (3) (3) (3) (3))
+;;  (4.497471958701756d0 (3) (3) (3) (3))
+;;  (4.025203326294506d0 (3) (3) NIL (3))
+;;  (2.693733411688349d0 (3) (3) NIL NIL))
+
+(defvar tedges)
+(defvar test-edge-set)
+(setf tedges '(((4.584407128516051d0 (2 1 3) (2 1 3) (1 2 3) (1 2 3)))
+              ((4.584407128516051d0 (2 1 3) (2 1 3) (1 2 3) (1 2 3))
+               (4.497471958701756d0 (3) (3) (3 2 1) (3))
+               (4.025203326294506d0 (1 2 3) (1 2 3) NIL (3 2 1))
+               (2.693733411688349d0 (3 2 1) (3 2 1) NIL NIL))))
+(setf test-edge-set (second tedges))
+
+(defun replace-entry (matrix row column new-value)
+"Replaces a specified matrix element with a new value. Indices start with 1. The function also returns the updated value. Actually uses array data structure."
+  (setf
+   (apply #'aref matrix (list (1- row) (1- column)))
+   new-value))
+
+
+(defvar *time-matrix*)
+(defun construct-time-matrix (n-number-of-species edge-set site-number)
+  "INPUT: an edge set (i.e. (second output-edges) or (union (first output-egdes) (second output-edges))) as well as the number of species and a site number. OUTPUT: a matrix of TIMES of coalescences. Let this matrix be M=(m_{ij}). Then 2m_{ij} - d_i - d_j is the coalescence time of i and j, where d_i is the START time of loci i"
+  (loop
+    initially
+       (setf *time-matrix*
+             (make-array (list n-number-of-species n-number-of-species)
+                                       :initial-element -1))
+    for i from 1 to (1- n-number-of-species)
+    do (loop for j from (1+ i) to
+             n-number-of-species
+             do (replace-entry *time-matrix* i j
+                               (get-tmrca i j edge-set site-number))))
+  *time-matrix*)
+
+
+(defun get-tmrca (species1 species2 edge-set site-number)
+  (loop for x in edge-set
+        if (common-coordinate species1 species2 x site-number)
+          minimizing (first x)))
+
+   
   ;; know the leaf times and the root time
   ;; know the number of leaves
   ;; need a tree with the associated parameters :dist-from-parent and :mutation-rate
