@@ -1,7 +1,7 @@
 ;;;; generalized-simulator.lisp --- Implement the MSCR-JC(k) process on
 ;;;;                                arbitrary binary trees. Currently under
 ;;;;                                construction.
-;; 
+;;
 ;; Author: max hill 
 ;; (Last updated 2022-05-24)
 
@@ -72,25 +72,53 @@
 ;;
 ;; - :vertex-age is the age of the vertex
 
+
+;; A note on the terminology used in this simulator. First, the phylogenetic
+;; trees (i.e. the species tree) here are binary and are always thought to be
+;; oriented so that the root is at the top and the leaves are at the bottom. The
+;; present time is t=0, and so more recent things are located lower on the tree,
+;; and "time" really means "age". Second, the phylogenetic tree is thought of as
+;; a structured collection of populations; in particular, each vertex and the
+;; edge directly above it is regarded as a "population". The "start time" of a
+;; population is the age of the vertex. The end time of a population is the
+;; start time plus the length of the edge. Here we regard the edge extending up
+;; from the vertex to be a 'population.' Hence, the population-start-time is the
+;; age of the vertex, and the population-end-time is the age of its
+;; parent.Third, mutation and recombination rates are associated individually
+;; with each population -- they need not all be the same everywhere on the tree.
+;; Fourth, there are two kinds of populations: "leaf" populations, which consist
+;; only of a list containing an plist of parameters, and "node" populations,
+;; which correspond to internal vertices of the phylogenetic tree. Node
+;; populations consist of a list containing three things: an plist of
+;; parameters, a left subtree, and a right subtree (which are both themselves
+;; either leaf or node populations.
+
 (defun make-leaf (leaf-label distance-from-parent mutation-rate recombination-rate)
-  "Create a leaf. Leaf-label should be a string. The other input parameters
-should be numbers."
-  `(,leaf-label
-    ((:dist-from-parent . ,distance-from-parent)
-     (:mutation-rate . ,mutation-rate)
-     (:recomb-rate . ,recombination-rate))))
+  "Create a leaf."
+  (list
+   (list :population-label leaf-label
+         :dist-from-parent distance-from-parent
+         :mutation-rate mutation-rate
+         :recomb-rate recombination-rate
+         :parent-label nil
+         :population-start-time nil
+         :population-end-time nil
+         :numeric-label nil)))
 
 (defun make-node (node-label distance-from-parent mutation-rate
                   recombination-rate left-subtree right-subtree)
-  "Create a node. Node-label should be a string, distance-from-parent,
-mutation-rate, and recomb-rate should be numbers, and the subtrees subtrees
-should be trees (i.e., either nodes or leafs, but not nil)."
-  `((,node-label
-     ((:dist-from-parent . ,distance-from-parent)
-      (:mutation-rate . ,mutation-rate)
-      (:recomb-rate . ,recombination-rate)))
-    ,left-subtree
-    ,right-subtree))
+  "Create a node."
+  (list
+   (list :population-label node-label
+         :dist-from-parent distance-from-parent
+         :mutation-rate mutation-rate
+         :recomb-rate recombination-rate
+         :parent-label nil
+         :population-start-time nil
+         :population-end-time nil
+         :numeric-label nil)
+   left-subtree
+   right-subtree))
 
 ;;______________________________________________________________________________
 ;;
@@ -98,65 +126,69 @@ should be trees (i.e., either nodes or leafs, but not nil)."
 ;;______________________________________________________________________________
 
 (defun leafp (tree)
-  "Return t if tree is a leaf and nil otherwise. Does not distinguish between
-leaves with/without vertex times."
+  "Return t if tree is a leaf and nil otherwise."
   (and (listp tree)
-       (= 2 (length tree))
-       (or (stringp (first tree))
-           (listp (first tree)))
-       (listp (second tree))))
-  
+       (= 1 (length tree))
+       (listp (first tree))))
+
 (defun nodep (tree)
-  "Return t if tree is a node and nil otherwise. Does not distinguish between
-  leaves with/without vertex times."
+  "Return t if tree is a node and nil otherwise."
   (and (listp tree)
        (= 3 (length tree))
+       (listp (first tree))
        (or (nodep (second tree))
            (leafp (second tree)))
        (or (nodep (third tree))
            (leafp (third tree)))))
+
+;; The next function tests whether a population is the root
+(defun rootp (tree)
+  "Test whether the top population of tree is the root population."
+  (not (get-parameter :parent-label tree)))
+
 
 ;;______________________________________________________________________________
 ;;
 ;; Part 2. Selectors
 ;;______________________________________________________________________________
 
-(defmacro get-parameter (parameter tree)
-  "Retrieve specific parameters from a tree node. Example usage: (get-parameter
-:mutation-rate *nv1*)"
-  `(cdr (assoc ,parameter (get-parameter-alist ,tree))))
-(defun get-parameter-alist (tree)
-  "Retrieve the parameter alist for the vertex at the top of the input tree.
-Works for both leaves and nodes."
-  (if (leafp tree)
-      (second tree)
-      (second (first tree))))
+(defun get-parameter (parameter population)
+  "Retrieve specific parameters from a population"
+  (getf (first population) parameter))
+
+(defun get-parameter-plist (population)
+  "Retrieve the property list of parameters for the given population."
+  (first population))
+
+(defun set-population-parameter (parameter value population)
+  "Set an already-existing population parameter to given value."
+  (setf (getf (first population) parameter) value))
+
+(defun add-population-parameter (parameter-key parameter-value tree)
+  "Adds parameter with given value to the plist of a single population. Does
+not affect subtrees."
+  (let* ((updated-parameter-plist
+           (list* parameter-key
+                  parameter-value
+                  (get-parameter-plist tree))))
+    (if (leafp tree)
+        (list updated-parameter-plist)
+        (list updated-parameter-plist
+              (left-subtree tree)
+              (right-subtree tree)))))
+
 (defun left-subtree (tree)
   "Return the left subtree of tree. If tree is a leaf, return nil."
   (if (leafp tree) nil (second tree)))
+
 (defun right-subtree (tree)
   "Return the right subtree of tree. If tree is a leaf, return nil."
   (if (leafp tree) nil (third tree)))
-(defun get-vertex-name (tree)
-  "Return the name (i.e. label) of vertex. Works for both leaves and internal
-nodes. For leaves, it returns the leaf label. For nodes, it returns the name of
-the node."
-  (first (if (leafp tree) tree (first tree))))
 
-;; (defun parent-test (tree child-name)
-;;   "Test if tree is the parent of the subtree with top vertex labeled child-name."
-;;   (or (equal (get-vertex-name (left-subtree tree))
-;;              child-name)
-;;       (equal (get-vertex-name (right-subtree tree))
-;;              child-name)))
-      
-;; (defun get-parent (tree child-name)
-;;   "Returns the parent node of the vertex with label child-name, which is a
-;; string. Usage: (get-parent *n3* ``ab'')."
-;;   (cond ((leafp tree) nil)
-;;         ((parent-test tree child-name) tree)
-;;         (t (append (get-parent (left-subtree tree) child-name)
-;;                    (get-parent (right-subtree tree) child-name)))))
+(defun get-population-name (tree)
+  "Return the name (i.e. label) of the population. Works for both leaves and internal
+nodes."
+  (get-parameter :population-label tree))
 
 (defun get-parent (tree child-name)
   "Returns the parent node of the vertex with label child-name, which is a
@@ -165,19 +197,40 @@ one needs to understand two properties of cond: first, cond terminates when the
 first condition (evaluated in order) evaluates to a non-nil result. Second, if
 test1 is nonnil, then a cond condition of the form ((test1)) returns the value
 of test1."
-  (cond ((leafp tree) nil)
-        ((or (equal (get-vertex-name (left-subtree tree)) child-name)
-             (equal (get-vertex-name (right-subtree tree)) child-name))
+  (cond ((leafp tree) "leafy")
+        ((or (equal (get-population-name (left-subtree tree)) child-name)
+             (equal (get-population-name (right-subtree tree)) child-name))
          tree)
         ((get-parent (left-subtree tree) child-name))
         ((get-parent (right-subtree tree) child-name))))
 
+(retrieve left-daugther population)
+(retrieve right-daugther population)
+(retrieve population label)
+(retrieve population mutation-rate)
+(retrieve population recomb-rate)
+(retrieve population start-time)
+(retrieve population end-time)
+(retrieve population edge-length)
+(retrieve parent population)
+
+
+          
+
+
+
+
 ;;______________________________________________________________________________
 ;;
-;; Part 3. Add vertex times to the trees
+;; Part 3. Augmenting tree Parameters
 ;;______________________________________________________________________________
 
-;; The next function counts the number of leaves on a binary tree.
+;; This section defines a function which compute additional information about
+;; the tree and adds it to the parameter list.
+
+
+;; First we define some counting functions to obtain the heighet as well as the
+;; number of leaves on the binary tree.
 (defun count-number-of-leaves (tree)
   "Count the number of leaves on a binary tree."
   (if (leafp tree)
@@ -185,73 +238,78 @@ of test1."
       (+ (count-number-of-leaves (left-subtree tree))
          (count-number-of-leaves (right-subtree tree)))))
 
-;; The next function computes the total height of a tree.
-(defun get-tree-height (tree &optional (x nil))
+(defun get-tree-height (tree)
   "Return the total height of the tree, i.e. from the top of the root edge to
-  the maximally distant leaf. Note: the optional variable x is an auxilliary
-  variable used to add up the total height of the tree over recursive calls; it
-  is used for the recursion and should not be specified by the user.
-  Usage: (get-tree-height tree)"
-  (if (null x)
-      (get-tree-height tree 0)
-      (if (leafp tree)
-          (+ x (get-parameter :dist-from-parent tree))
-          (max (get-tree-height (right-subtree tree)
-                (+ x (get-parameter :dist-from-parent tree)))
-               (get-tree-height (left-subtree tree)
-                (+ x (get-parameter :dist-from-parent tree)))))))
-                               
-;; We need the following auxilliary function.
-(defun add-age-parameters-to-leaf (tree parent-age)
-  "Cons (add) the population start and end times to the parameter alist of a leaf object. Note that the population-start-time is the age of the vertex, and the population-end-time is the age of its parent."
-  (list (get-vertex-name tree)
-        (acons :population-end-time parent-age
-               (acons :population-start-time
-                      (- parent-age (get-parameter :dist-from-parent tree))
-                      (get-parameter-alist tree)))))
+  the maximally distant leaf."
+  (get-tree-height-aux tree 0))
 
-;; The next function computes vertex times for a tree and outputs a new tree
-;; containing vertex times in the vertex parameter lists.
-(defun add-age-parameters-to-tree (tree
-                                   &optional (parent-age
-                                              (get-tree-height tree)))
-  "Input: a tree constructed with the functions 'make-node' and 'make-leaf'.
-Output: the same tree, but with labelled vertex times, in the form of two
-parameters: population-start-time and population-end-time. Here we regard the
-edge extending up from the vertex to be a 'population.' Hence, the
-population-start-time is the age of the vertex, and the population-end-time is
-the age of its parent. The optional variable is used for recursion and should
-not be entered by the user. Usage: (add-age-parameters-to-tree tree)"
-  (if (leafp tree)
-      (add-age-parameters-to-leaf tree parent-age)
-      (list (add-age-parameters-to-leaf tree parent-age)
-            (add-age-parameters-to-tree
-             (left-subtree tree)
-             (- parent-age (get-parameter :dist-from-parent tree)))
-            (add-age-parameters-to-tree
-             (right-subtree tree)
-             (- parent-age (get-parameter :dist-from-parent tree))))))
-
-;; The next function adds a root label to the parameter list
-(defun add-root-label (tree)
-  "Add a root indicator to the parameter-alist of a tree"
-  (when (nodep tree)
-    (list
-     (list
-      (get-vertex-name tree)
-      (acons :rootp t (get-parameter-alist tree)))
-     (left-subtree tree)
-     (right-subtree tree))))
+(defun get-tree-height-aux (tree x)
+  "Auxilliary function for get-tree-height. The variable x is a dummy variable
+  for adding up the total height of the tree."
+  (let ((dist-from-parent (get-parameter :dist-from-parent tree)))
+    (if (leafp tree)
+        (+ x dist-from-parent)
+        (max
+         (get-tree-height-aux (right-subtree tree) (+ x dist-from-parent))
+         (get-tree-height-aux (left-subtree tree) (+ x dist-from-parent))))))
 
 
-;; The next function adds a root label to the parameter list
-(defun add-root-label (tree)
-  (list
-   (list
-    (get-vertex-name tree)
-    (acons :rootp t (get-parameter-alist tree)))
-   (left-subtree tree)
-   (right-subtree tree)))
+;; The next function augments the tree parameter plists by recording information
+;; about parent populations (for easy retreival) and calculating population ages
+;; from edge lengths (which will aslo be convenient later).
+
+(defun add-ages-and-parents
+    (tree &optional (parent-age (get-tree-height tree)) (parent-label nil))
+  "Augment the population parameter plists of tree with additional information
+about the parents and ages of the populations. The optional variables are used
+for recursion and should not be entered by the user."
+  (let* ((dist-from-parent (get-parameter :dist-from-parent tree))
+         (current-population-start-time (- parent-age dist-from-parent))
+         (current-population-label (get-parameter :population-label tree)))
+    (set-population-parameter :parent-label parent-label tree)
+    (set-population-parameter :population-start-time current-population-start-time tree)
+    (set-population-parameter :population-end-time parent-age tree)
+    (unless (leafp tree)
+      (add-ages-and-parents (left-subtree tree)
+                            current-population-start-time
+                            current-population-label)
+      (add-ages-and-parents (right-subtree tree)
+                            current-population-start-time
+                            current-population-label))))
+
+;; The next two functions augment the input tree parameter lists with a
+;; structured population labeling system.
+
+(defun add-numeric-labels (tree)
+  "Add numeric labels to the tree parameter plists so that leaves are labeled
+with the numbers 1,..,n, and the label of each other nodes is a list consisting
+of the labels of its two children. This function both changes the tree and returns
+the value of the updated tree. The changes made to the tree are idempotent."
+  (progn
+    (defparameter *leaf-number-tracker* 0)
+    (add-numeric-labels-aux tree)
+    (makunbound '*leaf-number-tracker*)
+    tree))
+
+(defun add-numeric-labels-aux (tree)
+  "Recursive auxillary function for add-numeric-labels. Note: incf not only
+increments the variable, but also outputs the new value."
+  (set-population-parameter
+   :numeric-label
+   (if (leafp tree)
+       (incf *leaf-number-tracker*)
+       (list (add-numeric-labels-aux (left-subtree tree))
+             (add-numeric-labels-aux (right-subtree tree))))
+   tree))
+
+
+;; Finally, the key function of this section is the following.
+
+(defun augment-tree-parameters (tree)
+  "The input should be a tree constructed with the functions 'make-node' and
+'make-leaf'. This function is idempotent."
+  (progn (add-ages-and-parents tree)
+         (add-numeric-labels tree)))
 
 
 ;;______________________________________________________________________________
@@ -262,13 +320,14 @@ not be entered by the user. Usage: (add-age-parameters-to-tree tree)"
 ;; processed with the function 'add-age-parameters-to-tree'
 
 ;; Example 1. A leaf
-(defparameter *l1*
+(defparameter *l1
   (make-leaf "A" .1 1 4))
-(defparameter *lv1*
-  (add-age-parameters-to-tree *l1*))
+(defparameter *lv1 (augment-tree-parameters *l1))
+(add-numeric-labels *lv1)
+
 
 ;; Example 2. A node (unbalanced quartet):
-(defparameter *n1*
+(defparameter *n1
   (make-node "root" 0 3 0
              (make-node "ABC" 1 2 3 
                         (make-node "AB" .1 2 3
@@ -276,10 +335,12 @@ not be entered by the user. Usage: (add-age-parameters-to-tree tree)"
                                    (make-leaf "B" .1 1 1))
                         (make-leaf "C" .1 1.3 0))
              (make-leaf "D" 4 1.1 0)))
-(defparameter *nv1* (add-age-parameters-to-tree *n1*))
+(defparameter *nv1 (augment-tree-parameters *n1))
+(add-numeric-labels *nv1)
+
 
 ;; Example 3. A node (unbalanced quartet):
-(defparameter *n2*
+(defparameter *n2
   (make-node "root" 999 3 0
              (make-node "ABC" 1 2 3 
                         (make-node "AB" .1 2 3
@@ -287,10 +348,12 @@ not be entered by the user. Usage: (add-age-parameters-to-tree tree)"
                                    (make-leaf "B" .1 1 1))
                         (make-leaf "C" .1 1.3 0))
              (make-leaf "D" 4 1.1 0)))
-(defparameter *nv2* (add-age-parameters-to-tree *n2*))
+(defparameter *nv2 (augment-tree-parameters *n2))
+(add-numeric-labels *nv2)
+
 
 ;; Example 4. A node (balanced quartet):
-(defparameter *n3*
+(defparameter *n3
   (make-node "root" 999 .1 .2
              (make-node "ab" 2 .1 .2
                         (make-leaf "a" 2 .1 .2)
@@ -298,22 +361,12 @@ not be entered by the user. Usage: (add-age-parameters-to-tree tree)"
              (make-node "cd" 1 .1 .2
                         (make-leaf "c" 3 .1 .2)
                         (make-leaf "d" 2 .1 .2))))
-(defparameter *nv3* (add-age-parameters-to-tree *n3*))
+(defparameter *nv3 (augment-tree-parameters *n3))
+(add-numeric-labels *nv3)
 
-;; Example 5. Three taxa example
-(defparameter *3-taxa-example* '(("abc" (4 999 1 0))
-                                 (("ab" (2 2 0.1 0.2))
-                                  ("a" (0 2 0.1 0.2))
-                                  ("b" (0 2 0.1 0.2)))
-                                 ("c" (0 4 1 0))))
 
-(defparameter *t* '(("abc" (0 1 0))
-                    (("ab" (.9 0.1 0.2))
-                     ("a" (.5 0.1 0.2))
-                     ("b" (.4 0.1 0.2)))
-                    ("c" (.8 1 0))))
-
-(defparameter *bigbad*
+;; Example 5. A 6-taxa tree
+(defparameter *bigbad
     (make-node "root" 1 2 3
                (make-node "ABC" 1 2 3 
                           (make-node "AB" 1 2 3
@@ -325,7 +378,11 @@ not be entered by the user. Usage: (add-age-parameters-to-tree tree)"
                                      (make-leaf "D1" 1 2 3)
                                      (make-leaf "D2" 1 2 3))
                           (make-leaf "D3" 1 2 3))))
-(defparameter *bigbad* (add-age-parameters-to-tree *bigbad*))
+
+(defparameter *bigbad (augment-tree-parameters *bigbad))
+(add-numeric-labels *bigbad)
+
+
 ;;______________________________________________________________________________
 ;;
 ;; Part 6. Mutation Simulator.
@@ -363,7 +420,7 @@ must both be integers."
         ((= number 3) "G")))
         
 
-(defun implement-substitution (current-nucleotide &optional vertex-name)
+(defun implement-substitution (current-nucleotide &optional population-name)
   "Implements a substitution to a *different* nucleotide. Specifically, return a
 random number from the set {0,1,2,3}\{current-nucleotide}. It does this by
 adding 1d3 to the current nucleotide and then reducing the result modulo 4."
@@ -372,7 +429,7 @@ adding 1d3 to the current nucleotide and then reducing the result modulo 4."
     (format t "~%Substitution from ~a to ~a in population ~a~%"
             current-nucleotide
             new-nucleotide
-            vertex-name)
+            population-name)
     new-nucleotide))
 
 ;; Substitutions will be performed on each edge with some probability, which is
@@ -385,39 +442,31 @@ substitutions, then return the parent nucleotide. Assumes JC procees as
 specified in Dasarathy, Mossel, Nowak, Roch 'Coalescent-based species tree
 estimation: a stochastic Farris transform'. Output takes the form of a
 pair (label-name nucleotide)."
-  (let* ((vertex-name (get-vertex-name tree))
+  (let* ((population-name (get-population-name tree))
          (edge-length (get-parameter :dist-from-parent tree))
          (mutation-rate (get-parameter :mutation-rate tree))
          (substitution-probability
            (* .75 (- 1 (exp (* (/ -4 3) mutation-rate edge-length)))))
-         (new-nucleotide (if (< (random 1d0) substitution-probability)
-                             (implement-substitution parent-nucleotide vertex-name)
-                             (progn
-                               (format t "~%No substitution in population ~a~%"
-                                       vertex-name)
-                               parent-nucleotide))))
+         (new-nucleotide
+           (if (< (random 1d0) substitution-probability)
+               (implement-substitution parent-nucleotide population-name)
+               (progn (format t "~%No substitution in population ~a~%"
+                              population-name) parent-nucleotide))))
     (progn
-      (if (nodep tree)
-          (unless (equal vertex-name "root")
-            (format t "ancestor ~a: ~a ~%" vertex-name new-nucleotide))
-          (format t "leaf ~a: ~a ~%" vertex-name new-nucleotide))
-      (list vertex-name new-nucleotide))))
+      (if (leafp tree)
+          (format t "leaf ~a: ~a ~%" population-name new-nucleotide)
+          (unless (rootp tree)
+            (format t "ancestor ~a: ~a ~%" population-name new-nucleotide)))
+      (list population-name new-nucleotide))))
 
 ;; The next two functions are the workhorses of our sequence simulator. They use
 ;; the above functions to recursively implement the JC69 process on the input
 ;; tree.
 
-(defun evolve-down-tree (tree)
-  "Recursive implmentation of JC69 on the tree. Starts with random nucleotide at
-the tip of the edge above the root. To make this start exactly at the root (by
-which I mean the mrca of the samples) you should set the 'dist-from-parent' in
-the root vertex to zero."
-  (let ((root-state (draw-random-nucleotide)))
-    (progn (format t "Root state: ~a ~%" root-state)
-           (evolve-down-tree-aux tree root-state nil))))
 
 (defun evolve-down-tree-aux (tree parent-nucleotide x)
-  "x is the accumulator variable use to construct the output list"
+  "Recursive auxilliary function for imlement-jc-process. The variable x is the
+accumulator variable use to construct the output list."
   (if (leafp tree)
       (cons (evolve-down-edge tree parent-nucleotide) x)
       (let ((new-parent-nucleotide
@@ -428,8 +477,17 @@ the root vertex to zero."
                                                     new-parent-nucleotide
                                                     x)))))
 
+(defun implement-jukes-cantor-process (tree)
+  "Recursive implmentation of JC69 on the tree. Starts with random nucleotide at
+the tip of the edge above the root. To make this start exactly at the root (by
+which I mean the mrca of the samples) you should set the 'dist-from-parent' in
+the root vertex to zero."
+  (let ((root-state (draw-random-nucleotide)))
+    (progn (format t "Root state: ~a ~%" root-state)
+           (evolve-down-tree-aux tree root-state nil))))
+
 ;; It works! Example usage:
-;; (evolve-down-tree *n1*)
+;; (implement-jukes-cantor-process *n1)
 
 ;; The following function allows us to avoid the strange backticks like those
 ;; used in our original simulator, simulate-three-species
@@ -437,25 +495,30 @@ the root vertex to zero."
 (defun make-leaf-sample (i n-total-leaf-number k-sequence-length leaf)
   "makes the i-th initial sample for a phylogenetic tree with a number of taxa
 equal to n-total-leaf-number, and when sequences are length k-sequence-length"
-  (progn
-    (format t "~%Sample ~a created in population ~a at time ~a~%"
-            i
-            (get-vertex-name leaf)
-            (get-parameter :population-start-time leaf))
-    (list
-     (list
-      (cons
-       (get-parameter :population-start-time leaf)
-       (append (make-list (- i 1))
-               (cons (interval 1 k-sequence-length)
-                     (make-list (- n-total-leaf-number i)))))))))
+  (let ((new-lineage
+          (list
+           (list
+            (cons (get-parameter :population-start-time leaf)
+                  (append (make-list (- i 1))
+                          (cons (interval 1 k-sequence-length)
+                                (make-list (- n-total-leaf-number i)))))))))
+    (progn (format t "~%~%Sample ~a created in population ~a at time ~a~%One lineage added: ~a"
+                   i
+                   (get-population-name leaf)
+                   (get-parameter :population-start-time leaf)
+                   (first (first new-lineage)))
+           new-lineage)))
 
 (defun merge-output-edge-sets (child-1 child-2)
   "Combine the output edge sets child-1=(P_1,Q_1) and child-2=(P_2,Q_2) from two
 daughter populations for entry into their parent population. Output a pair
 of (P,Q) of active and inactive edges in the appropriate format for use in
 arg-builder. Note that if one of the edge-sets is nil, this will just output the
-other edge set."
+other edge set. Recall that the set P consists of those lineages which are
+active in the sense that they may still undergo coalescent or recombination
+events. The seq Q contains lineages which have been deactivated as a result of
+undergoing coalescent events -- but these can't just be thrown out because they
+contain information about MRCAs."
   (list (union (first child-1) (first child-2))
         (union (second child-1) (second child-2))))
 
@@ -469,7 +532,7 @@ this rule.)"
   (length (first edge-sets)))
 
 ;; Load functions from old simulator
-(load "/home/ultralisk/MSCR-simulator/scripts/simulator.lisp")
+(load "/home/mutalisk/research/recombination-project/MSCR-simulator/scripts/simulator.lisp")
 
 
 ;; This is the auxillary function to the main simulator; it simulates the ARG
@@ -506,42 +569,64 @@ start time t_0 and end time t_end."
 ;; (i.e. by setting 'stop-at-mrca' to true when calling
 ;; 'build-single-population-arg'.
 (defun start-mscr (species-tree k-sequence-length)
-  (progn
-    (defparameter *leaf-number-tracker* 0) ; can I change this to a let form?
-    (mscr (count-number-of-leaves species-tree)
-          k-sequence-length
-          species-tree
-          nil)))
+  (mscr (count-number-of-leaves species-tree)
+        k-sequence-length
+        species-tree
+        nil))
 
-(defparameter *leaf-number-tracker* 0)
-(defun mscr (n-total-leaf-number k-sequence-length tree edge-sets)
-  "Input comments: the variable 'n-total-leaf-number' is number of leaves on the
-initial (i.e. full) tree, 'k-sequence-length' is just the length of the
-sequences in base pairs. The input 'leaf-number-tracker' tracks the leaf number:
-its initial value is 1? and it increments leaf-number-tracker by 1 each time a
-right subtree is recursively evaluated. The initial value of edge-sets should be
-nil, I think."
-  (build-single-population-arg
-   (get-parameter :recomb-rate tree)           ; ρ
-   (get-parameter :population-start-time tree) ; t_0
-   (get-parameter :population-end-time tree)   ; t_end
-   (get-vertex-name tree)                      ; population-name
-   k-sequence-length
-   (if (leafp tree)
-       (make-leaf-sample (incf *leaf-number-tracker*)
-                         n-total-leaf-number
-                         k-sequence-length
-                         tree)
-       (merge-output-edge-sets (mscr n-total-leaf-number
-                                     k-sequence-length
-                                     (left-subtree tree)
-                                     edge-sets) 
-                               (mscr n-total-leaf-number
-                                     k-sequence-length
-                                     (right-subtree tree)
-                                     edge-sets)))
-   (equal "root" (get-vertex-name *nv1*)))) ; need to test this -- is it
-                                            ; terminating correctly?
+(defun mscr (n k tree edge-sets)
+  "Input comments: the variable 'n' is number of leaves on the initial (i.e.
+full) tree, 'k' is the length of the sequences in base pairs. The input
+'leaf-number-tracker' tracks the leaf number: its initial value is 1? and it
+increments leaf-number-tracker by 1 each time a right subtree is recursively
+evaluated. The initial value of edge-sets should be nil, I think."
+(if (leafp tree)
+    (make-leaf-sample (get-parameter :numeric-label tree) n k tree)
+    (let* ((lineages-from-left-daughter (mscr n k (left-subtree tree) edge-sets))
+           (lineages-from-right-daughter (mscr n k (right-subtree tree) edge-sets))
+           (starting-lineages (merge-output-edge-sets lineages-from-left-daughter
+                                                      lineages-from-right-daughter)))
+      (build-single-population-arg
+       (get-parameter :recomb-rate tree)
+       (get-parameter :population-start-time tree)
+       (get-parameter :population-end-time tree)
+       (get-parameter :population-label tree) ; maybe use the numeric labels?
+       k ; sequence length
+       starting-lineages
+       (rootp tree)))))
+
+
+;; This is the main simulator. It is currently running without error, but the
+;; output is not correct. It looks like some of the subroutines borrowed from
+;; the earlier simulator need to be modified... Actually, I think I fixed those
+;; issues now. I need to make mscr into an auxillary function mscr-aux, and then
+;; write an intial function mscr which treats the root population differently
+;; (i.e. by setting 'stop-at-mrca' to true when calling
+;; 'build-single-population-arg'.
+(defun mscr (species-tree k-sequence-length)
+  (mscr-aux (count-number-of-leaves species-tree)
+            k-sequence-length
+            species-tree))
+
+(defun mscr-aux (n k tree)
+  "Recursive auxilliary function for mscr. The variable 'n' is number of leaves on the initial (i.e.
+full) tree, 'k' is the length of the sequences in base pairs."
+  (if (leafp tree)
+      (make-leaf-sample (get-parameter :numeric-label tree) n k tree)
+      (let* ((lineages-from-left-daughter (mscr-aux n k (left-subtree tree)))
+             (lineages-from-right-daughter (mscr-aux n k (right-subtree tree)))
+             (starting-lineages (merge-output-edge-sets lineages-from-left-daughter
+                                                        lineages-from-right-daughter)))
+        (build-single-population-arg (get-parameter :recomb-rate tree)
+                                     (get-parameter :population-start-time tree)
+                                     (get-parameter :population-end-time tree)
+                                     (get-parameter :population-label tree) ; maybe use the numeric labels?
+                                     k ; sequence length
+                                     starting-lineages
+                                     (rootp tree)))))
+
+
+;; left off here :)
 
 
 ;; ((4.584407128516051d0 (1) (1) (1) (1))
@@ -655,6 +740,7 @@ times are give by time-matrix."
                (4.025203326294506d0 (1 2 3) (1 2 3) NIL (3 2 1))
                (2.693733411688349d0 (3 2 1) (3 2 1) NIL NIL))))
 (setf test-edge-set (second tedges))
+
 
 (defun replace-entry (matrix row column new-value)
 "Replaces a specified matrix element with a new value. Indices start with 1. The function also returns the updated value. Actually uses array data structure."
