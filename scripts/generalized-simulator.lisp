@@ -3,7 +3,7 @@
 ;;;;                                construction.
 ;;
 ;; Author: max hill 
-;; (Last updated 2022-05-24)
+;; (Last updated 2022-05-30)
 
 ;; DESCRIPTION: Here we attempt to implement a simulator which takes as input a
 ;; binary tree T (ideally in newick tree format, with branch lengths) and output
@@ -34,8 +34,11 @@
 ;;    estimating branch lengths, as this would be a key test of one of our
 ;;    paper's conclusions.
 ;;
-;; 4. (low priority) address performance issues arising from use of integer
-;;    intervals.
+;; 4. (low priority) sensible naming of variables and things
+;;    I should rename 'edge' to 'lineage'. Also consider using p-lists:
+;;    '(:age 0.1 :ancestral-sites-from-taxa-1 ((1 . 4) (6 . 10) (12 . 40))
+;;    :ancestral-sites-from-taxa-2 ((1 . 7) (9 . 11))
+;;    :ancestral-sites-from-taxa-3 NIL)
 ;;
 ;; Sources: The following resource was extremely helpful:
 ;; https://www2.cs.sfu.ca/CourseCentral/310/pwfong/Lisp/3/tutorial3.html
@@ -71,7 +74,6 @@
 ;;   parent.
 ;;
 ;; - :vertex-age is the age of the vertex
-
 
 ;; A note on the terminology used in this simulator. First, the phylogenetic
 ;; trees (i.e. the species tree) here are binary and are always thought to be
@@ -142,14 +144,14 @@
            (leafp (third tree)))))
 
 ;; The next function tests whether a population is the root
+
 (defun rootp (tree)
   "Test whether the top population of tree is the root population."
   (not (get-parameter :parent-label tree)))
 
-
 ;;______________________________________________________________________________
 ;;
-;; Part 2. Selectors
+;; Part 3. Selectors
 ;;______________________________________________________________________________
 
 (defun get-parameter (parameter population)
@@ -186,8 +188,8 @@ not affect subtrees."
   (if (leafp tree) nil (third tree)))
 
 (defun get-population-name (tree)
-  "Return the name (i.e. label) of the population. Works for both leaves and internal
-nodes."
+  "Return the name (i.e. label) of the population. Works for both leaves and
+internal nodes."
   (get-parameter :population-label tree))
 
 (defun get-parent (tree child-name)
@@ -204,18 +206,12 @@ of test1."
         ((get-parent (left-subtree tree) child-name))
         ((get-parent (right-subtree tree) child-name))))
         
-
-
-
-
 ;;______________________________________________________________________________
 ;;
-;; Part 3. Augmenting tree Parameters
+;; Part 4. Augmenting tree Parameters
 ;;______________________________________________________________________________
-
-;; This section defines a function which compute additional information about
+;; This section defines a function which computes additional information about
 ;; the tree and adds it to the parameter list.
-
 
 ;; First we define some counting functions to obtain the heighet as well as the
 ;; number of leaves on the binary tree.
@@ -240,7 +236,6 @@ of test1."
         (max
          (get-tree-height-aux (right-subtree tree) (+ x dist-from-parent))
          (get-tree-height-aux (left-subtree tree) (+ x dist-from-parent))))))
-
 
 ;; The next function augments the tree parameter plists by recording information
 ;; about parent populations (for easy retreival) and calculating population ages
@@ -290,7 +285,6 @@ increments the variable, but also outputs the new value."
              (add-numeric-labels-aux (right-subtree tree))))
    tree))
 
-
 ;; Finally, the key function of this section is the following.
 
 (defun augment-tree-parameters (tree)
@@ -299,10 +293,9 @@ increments the variable, but also outputs the new value."
   (progn (add-ages-and-parents tree)
          (add-numeric-labels tree)))
 
-
 ;;______________________________________________________________________________
 ;;
-;; Part 4. Tree examples for testing
+;; Part 5. Tree examples for testing
 ;;______________________________________________________________________________
 ;; From here on we will assume that all trees have vertex times, i.e. were
 ;; processed with the function 'add-age-parameters-to-tree'
@@ -312,7 +305,6 @@ increments the variable, but also outputs the new value."
   (make-leaf "A" .1 1 4))
 (defparameter *lv1 (augment-tree-parameters *l1))
 (add-numeric-labels *lv1)
-
 
 ;; Example 2. A node (unbalanced quartet):
 (defparameter *n1
@@ -326,7 +318,6 @@ increments the variable, but also outputs the new value."
 (defparameter *nv1 (augment-tree-parameters *n1))
 (add-numeric-labels *nv1)
 
-
 ;; Example 3. A node (unbalanced quartet):
 (defparameter *n2
   (make-node "root" 999 3 0
@@ -339,7 +330,6 @@ increments the variable, but also outputs the new value."
 (defparameter *nv2 (augment-tree-parameters *n2))
 (add-numeric-labels *nv2)
 
-
 ;; Example 4. A node (balanced quartet):
 (defparameter *n3
   (make-node "root" 999 .1 .2
@@ -351,7 +341,6 @@ increments the variable, but also outputs the new value."
                         (make-leaf "d" 2 .1 .2))))
 (defparameter *nv3 (augment-tree-parameters *n3))
 (add-numeric-labels *nv3)
-
 
 ;; Example 5. A 6-taxa tree
 (defparameter *bigbad
@@ -369,7 +358,6 @@ increments the variable, but also outputs the new value."
 
 (defparameter *bigbad (augment-tree-parameters *bigbad))
 (add-numeric-labels *bigbad)
-
 
 ;;______________________________________________________________________________
 ;;
@@ -406,7 +394,6 @@ must both be integers."
         ((= number 1) "T")
         ((= number 2) "C")
         ((= number 3) "G")))
-        
 
 (defun implement-substitution (current-nucleotide &optional population-name)
   "Implements a substitution to a *different* nucleotide. Specifically, return a
@@ -451,7 +438,6 @@ pair (label-name nucleotide)."
 ;; the above functions to recursively implement the JC69 process on the input
 ;; tree.
 
-
 (defun evolve-down-tree-aux (tree parent-nucleotide x)
   "Recursive auxilliary function for imlement-jc-process. The variable x is the
 accumulator variable use to construct the output list."
@@ -477,17 +463,174 @@ the root vertex to zero."
 ;; It works! Example usage:
 ;; (implement-jukes-cantor-process *n1)
 
+;;______________________________________________________________________________
+;;
+;; Part 7. Integer Intervals
+;;______________________________________________________________________________
+;;
+;; In this section, we implement an interval system which will be used by the
+;; MSCR simulator. In paraticular, we consider sets of integer intervals, where
+;; integer intervals take the form (m . n) = {m,m+1,...,n}, where m=<n. We say
+;; that two integer intervals (a . b) and (c . d) are separated iff either b+1<d
+;; or d+1<a. Obviously, separatedness is strictly stronger than disjointedness.
+;; For example, the intervals (1 . 3) and (4 . 8) are disjoint but not
+;; separated.
+;;
+;; If two integer intervals are not separated, we say that they are overlapping.
+;; While this terminology is not consistent with regular use of the term
+;; 'overlapping', it is useful to give a name to the property.
+;;
+;; In particular, we will consider lists of separated intervals of integers
+;; which are ordered increasing by magnitude. We call such lists osisets (for
+;; "ordered separated interval sets". Examples oisets: '((1 . 4) (6 . 10) (12 .
+;; 29)). Nonexamples: '((1 . 5) (6 . 10) (12 . 29)) and '((1. 5) (12 . 29) (6 .
+;; 10)).
+;;
+;; Useful facts:
+;;   1. The union of overlapping intervals is an interval,
+;;   2. Intervals intervals (a . b) and (c . d) overlap iff a=<d+1 AND c=<b+1
+
+;; Basic integer intervals are constructed using the following function.
+
+(defun make-interval (a b)
+  "Make an interval with endpoints a and b."
+  (declare (optimize (speed 3)))
+  (declare (type fixnum a b))
+  (if (<= a b)
+      (cons a b)
+      (cons b a)))
+
+;; The next several functions are the selectors and recognizers for integer
+;; intervals and osisets.
+
+(defun upper (I)
+  (cdr I))
+
+(defun lower (I)
+  (car I))
+
+(defun separatedp (I J)
+  "Test if two integer intervals I and J are separated. Setting safety = 0 here
+is okay - there is no risk of overflow since we never add these numbers, and
+they are bounded by k, which presumably is less than 2^15."
+  (declare (optimize (speed 3) (safety 0)))
+  (or (< (the fixnum (1+ (the fixnum (cdr I)))) (the fixnum (car J)))
+      (< (the fixnum (1+ (the fixnum (cdr J)))) (the fixnum (car I)))))
+
+(defun overlapp (I J)
+  "Test if two integer intervals I and J are overlapping."
+  (not (separatedp I J)))
+
+(defun intervalp (x)
+  "Test if x is an integer interval. The null set is regarded as an interval."
+  (or (null x)
+      (and (consp x)
+           (integerp (car x))
+           (integerp (cdr x))
+           (<= (car x) (cdr x)))))
+
+(defun osisetp (x)
+  "Test if x is an osiset."
+  (if (null (rest x))
+      (intervalp (first x))
+      (and (every 'intervalp x)
+           (< (1+ (upper (first x))) (lower (second x)))
+           (osisetp (rest x)))))
+
+(defun number-in-intervalp (x interval)
+  "Test whether the number x is in the interval (an integer interval)."
+  (and (>= x (lower interval))
+       (<= x (upper interval))))
+
+(defun test-membership (x osiset)
+  "Test whether the integer x is contained in the osiset."
+  (loop for interval in osiset
+          thereis (and (>= x (car interval))
+                       (<= x (cdr interval)))))
+
+;; The next three functions are used for merging osisets. This will be used for
+;; implementing coalescences.
+
+(defun unite-overlapping-intervals (list-of-intervals)
+  "Input: a list of overlapping intervals. Output: the union of those intervals.
+Does not test whether the input intervals are overlapping."
+  (make-interval (loop for x in list-of-intervals minimizing (car x))
+                 (loop for x in list-of-intervals maximizing (cdr x))))
+
+(defun add-interval-to-osiset (I osiset)
+  "Input: an interval I and a osiset D. Output: a osiset consisting of the
+union of I and D. Example usage: (add-interval-to-osiset '(1 . 111) '((1 . 2) (3
+. 11) (12 . 15)))"
+  (loop for x in osiset
+        with overlap-indicator = nil
+        with intervals-remaining = (length osiset)
+        with interval-added = nil
+        do (decf intervals-remaining)
+        if (overlapp x I)
+          collect x into list-of-overlapping-intervals
+          and do (setf overlap-indicator t)
+          and if (= 0 intervals-remaining)
+                collect (unite-overlapping-intervals
+                         (cons I list-of-overlapping-intervals))
+                  into new-osiset end
+        else
+          if overlap-indicator
+            do (setf overlap-indicator nil interval-added t)
+            and collect (unite-overlapping-intervals
+                         (cons I list-of-overlapping-intervals))
+                  into new-osiset
+            and collect x into new-osiset
+        else
+          if (and (not interval-added) (< (upper I) (lower x)))
+            collect I into new-osiset and do (setf interval-added t) end
+          and collect x into new-osiset
+          and if (and (> (lower I) (upper x)) (= 0 intervals-remaining))
+                collect I into new-osiset end
+                finally (return new-osiset)))                  
+
+(defun merge-osisets (osiset1 osiset2)
+  "Inpute: two osisets. Output: a new osiset which equals the union of the two
+input osisets."
+  (cond ((endp osiset1) osiset2) ; if either osiset is empty, just return 
+        ((endp osiset2) osiset1) ; the other one.
+        (t (loop for interval in osiset1
+                 with new-osiset = osiset2
+                 do (setf new-osiset (add-interval-to-osiset interval new-osiset))
+                 finally
+                    (return new-osiset)))))
+
+;; The next function splits osisets. This will be used for implementing
+;; recombinations.
+
+(defun split-osiset (breakpoint input-osiset)
+  "Return a list (left-osiset right-osiset) consisting of those points in the
+osiset d which are strictly to the left of the breakpoint and those which
+are (not)strictly to the right. Example useage: (split-osiset 4 '((1 . 3) (5 .
+7)))"
+  (loop for x in input-osiset
+        if (< (upper x) breakpoint) collect x into left-osiset
+          else
+            if (<= breakpoint (lower x)) collect x into right-osiset
+              else
+                collect (make-interval (lower x) (1- breakpoint)) into left-osiset
+                and collect (make-interval breakpoint (upper x)) into right-osiset
+        finally (return (list left-osiset right-osiset))))
 
 ;;______________________________________________________________________________
 ;;
-;; Part 7. MSCR Simulator
+;; Part 8. MSCR Simulator
 ;;______________________________________________________________________________
 ;;
 ;; This section implements the MSCR simulator on a general binary tree.
 
+;; We start by defining the following global parameter. If *mscr-verbose-mode*
+;; is non-nil, then the MSCR simulator will print output about what it is doing.
+;; This is for testing purposes.
 
-;; We start by defining several general auxillary functions. These have been
-;; copied over from simulator.lisp without change.
+(defparameter *mscr-verbose-mode* nil)
+
+;; Next we define several general auxillary functions. Most of them were copied
+;; over from simulator.lisp without change.
 
 (defun draw-exponential (λ)
   "Return a number drawn according to a rate λ exponential random variable.
@@ -535,169 +678,6 @@ http://www-users.cselabs.umn.edu/classes/Spring-2018/csci4511/lisp/mapping.html"
    #'(lambda (element) (member element elements-to-remove :test #'equal))
    initial-set))
 
-;; Next we define several auxillary functions needed for implementing specific
-;; steps in the MSCR process. These have been modified from the versions in
-;; simulator.lisp to (1) allow for general tree input rather than just trees
-;; with three leaves, and (2) to allow for symbolic interval system, rather than
-;; just tracking sites using the function interval (which is too slow).
-
-(defun implement-recombination (time edge-sets number-of-base-pairs
-                                &optional (population-name nil))
-  "Updates the edge-sets (p,q) appropriately for when a coalescence occurs at
-the given time."
-  (let* ((recombination-child (randomly-choose (first edge-sets)))
-	 (breakpoint (+ 1 (random (- number-of-base-pairs 1))))
-	 (recombination-parents (make-recombination-parents time recombination-child breakpoint))
-	 (new-p (cons (first recombination-parents)
-		      (cons (second recombination-parents)
-			    (remove-elements
-			     (cons recombination-child nil)
-			     (first edge-sets))))))
-    (progn
-      (format t "~%~%RECOMBINATION in ~a at time ~a~%One child edge removed: ~a~%Two parent edges added: ~a~%                        ~a"
-              population-name
-              time recombination-child
-              (first recombination-parents)
-              (second recombination-parents))
-      (list new-p (second edge-sets)))))
-
-
-(defun make-recombination-parents (time edge breakpoint)
-  "Creates both parents of a specified recombining child edge. Outputs a list
-containing the left and right parent, where the left (right) parent contains
-only genetic labels less than or equal to (greater than) the breakpoint. Working
-example: (make-recombination-parents .3 `(.1 ,(interval 1 7) ,(interval 3 6)
-,(interval 2 10)) 7)"
-  (let* ((paired-list
-	   (mapcar
-	    #'(lambda (label-set)
-		(loop for item in label-set
-		      if (<= item breakpoint) collect item into left-part
-			else collect item into right-part
-		      finally (return (list left-part right-part))))
-	    (rest edge))))
-    (list
-     (cons time (mapcar #'first paired-list))
-     (cons time (mapcar #'second paired-list)))))
-
-
-Currently: 
-INPUT EDGE: (.1 ,(interval 1 7)
-                ,(interval 3 6)
-                ,(interval 2 10))
-SAMPLE EDGE: (NIL NIL (1 2 3 4 5 6 7) NIL NIL)
-
-We Need it to be:
-INPUT EDGE: (.1 osiset-1 ... osiset-n)
-
-(defun make-recombination-parents1 (time edge breakpoint)
-  (let ((list-of-osisets (rest edge)))
-    (loop for osiset in list-of-osisets
-          for split-set = (split-osiset breakpoint osiset)
-          collect (first split-set) into left-parent
-          collect (second split-set) into right-parent
-          finally (return (list (cons time left-parent) (cons time right-parent))))))
-
-;; it works! for example:
-;; (make-recombination-parents1 .99 `(.1 ,*osiset ((1 . 7) (9 . 11)) nil) 3)
-;; I should rename 'edge' to 'lineage'. Also consider using p-lists:
-;;
-;; '(:age 0.1 :ancestral-sites-from-taxa-1 ((1 . 4) (6 . 10) (12 . 40)) :ancestral-sites-from-taxa-2 ((1 . 7) (9 . 11)) :ancestral-sites-from-taxa-3 NIL)
-
-(defun make-leaf-sample1 (i n-total-leaf-number k-sequence-length leaf)
-  "Make the i-th initial sample for a phylogenetic tree with a number of taxa
-equal to n-total-leaf-number, and when sequences are length k-sequence-length."
-  (let ((new-lineage
-          (list
-           (list
-            (cons (get-parameter :population-start-time leaf)
-                  (append (make-list (- i 1))
-                          (cons (list (make-interval 1 k-sequence-length))
-                                (make-list (- n-total-leaf-number i)))))))))
-    (progn (format t "~%~%LINEAGE ~a CREATED in ~a at time ~a~%One lineage added: ~a"
-                   i
-                   (get-population-name leaf)
-                   (get-parameter :population-start-time leaf)
-                   (first (first new-lineage)))
-           new-lineage)))
-;; example: (make-leaf-sample1 1 4 5 *lv1) remember this gives a pair (P,Q) in
-;; which Q=nil and P is a singleton containing only one edge. So the edge is
-;; actually (first (first (make-leaf-sample1 1 4 5 *lv1)))
-
-(defparameter *leaf-sample1 (make-leaf-sample1 1 4 5 *lv1))
-(defparameter *leaf-sample2 (make-leaf-sample1 1 4 5 *lv1))
-
-(defparameter *osiset1 '((1 . 4) (6 . 10) (12 . 15) (19 . 20)))
-(defparameter *osiset2 '((1 . 3) (9 . 13) (25 . 30)))
-
-(defun merge-osisets (osiset1 osiset2)
-  "Inpute: two osisets. Output: a new osiset which equals the union of the two
-input osisets."
-  (loop for interval in osiset1
-        with new-osiset = osiset2
-        do (setf new-osiset (add-interval-to-osiset interval new-osiset))
-        finally
-           (return new-osiset)))
-;; it works! Example: (merge-osisets *osiset1 *osiset2)
-    
-(defun make-coalescent-parent1 (time coalescing-pair)
-  "Creates parent edge of two coalescing edges. The input coalescing-edges is of
-the form (x y) where x and y are the edges"
-  (let* ((edge1 (first coalescing-pair))
-	(edge2 (second coalescing-pair))
-        (list1-of-osisets (rest edge1)) ; rename osiset to 'ancestor set'?
-        (list2-of-osisets (rest edge2))) ; rename osiset to 'ancestor set'?
-    (cons time
-          (loop for osiset1 in list1-of-osisets
-                for osiset2 in list2-of-osisets
-                collecting (merge-osisets osiset1 osiset2) into x ; I still need to write the function merge-osisets
-                finally (return x)))))
-
-;; It looks like this works. For example:
-;; (make-coalescent-parent .5 (list (first (first *leaf-sample1)) (first (first *leaf-sample2))))
-;; But I need to test this more thoroughly
-
-(defun make-coalescent-parent (time coalescing-pair)
-  "Creates parent edge of two coalescing edges. The input coalescing-edges is of
-the form (x y) where x and y are the edges"
-  (let ((edge1 (first coalescing-pair))
-	(edge2 (second coalescing-pair)))
-    (cons time
-          (loop for i from 1 to (1- (length edge1))
-                collecting (union (nth i edge1) (nth i edge2)) into x
-                finally (return x)))))
-
-(defun implement-coalescence (time edge-sets &optional (population-name nil))
-  "Updates the edge-sets (p,q) appropriately for when a recombination occurs at
-the given time."
-  (let* ((coalescing-pair (randomly-choose (first edge-sets) 2))
-	 (coalescent-parent (make-coalescent-parent time coalescing-pair))
-	 (new-p (remove-elements coalescing-pair (cons coalescent-parent (first edge-sets))))
-	 (new-q (cons coalescent-parent (second edge-sets))))
-    (progn
-      (format t "~%~%COALESCENCE in ~a at time ~a~%Two child edges removed: ~a~%                         ~a~%One parent edge created: ~a"
-              population-name time (first coalescing-pair) (second coalescing-pair) coalescent-parent)
-      (list new-p new-q))))
-
-;; The following function allows us to avoid the strange backticks like those
-;; used in our original simulator, simulate-three-species
-(defun make-leaf-sample (i n-total-leaf-number k-sequence-length leaf)
-  "Make the i-th initial sample for a phylogenetic tree with a number of taxa
-equal to n-total-leaf-number, and when sequences are length k-sequence-length."
-  (let ((new-lineage
-          (list
-           (list
-            (cons (get-parameter :population-start-time leaf)
-                  (append (make-list (- i 1))
-                          (cons (interval 1 k-sequence-length)
-                                (make-list (- n-total-leaf-number i)))))))))
-    (progn (format t "~%~%LINEAGE ~a CREATED in ~a at time ~a~%One lineage added: ~a"
-                   i
-                   (get-population-name leaf)
-                   (get-parameter :population-start-time leaf)
-                   (first (first new-lineage)))
-           new-lineage)))
-
 (defun merge-output-edge-sets (child-1 child-2)
   "Combine the output edge sets child-1=(P_1,Q_1) and child-2=(P_2,Q_2) from two
 daughter populations for entry into their parent population. Output a pair
@@ -720,9 +700,106 @@ Q. I can't remember off the top of my head but there might be an exception to
 this rule.)"
   (length (first edge-sets)))
 
-;; This is the auxillary function to the main simulator; it simulates the ARG
-;; process in a single population. It is analogous to 'arg-builder' in the
-;; previous work
+(defun get-active-lineages (edge-sets)
+  "For code readability. Input: (P,Q). Returns P"
+  (first edge-sets))
+
+;; Next we define several auxillary functions needed for implementing specific
+;; steps in the MSCR process. These have been modified from the versions in
+;; simulator.lisp to (1) allow for general tree input rather than just trees
+;; with three leaves, and (2) to allow for symbolic interval system, rather than
+;; just tracking sites using the function interval (which is too slow).
+
+(defun implement-recombination (time edge-sets number-of-base-pairs
+                                &optional (population-name nil))
+  "Updates the edge-sets (p,q) appropriately for when a coalescence occurs at
+the given time."
+  (let* ((recombination-child (randomly-choose (first edge-sets)))
+	 (breakpoint (+ 2 (random (- number-of-base-pairs 1)))) ; if x < break --> x goes left
+                                                                ; if x >= break -> x goes right
+                                                                ; so this choice of +2 is correct.
+	 (recombination-parents (make-recombination-parents time recombination-child breakpoint))
+	 (new-p (cons (first recombination-parents)
+		      (cons (second recombination-parents)
+			    (remove-elements
+			     (cons recombination-child nil)
+			     (first edge-sets))))))
+    (progn
+      (when *mscr-verbose-mode*
+        (format t "~%~%RECOMBINATION in ~a at time ~a" population-name time)
+        (format t "~%Breakpoint: ~a" breakpoint)
+        (format t "~%One child edge removed: ~a" recombination-child)
+        (format t "~%Two parent edges added: ~a" (first recombination-parents))
+        (format t "~%                        ~a" (second recombination-parents)))
+      (list new-p (second edge-sets)))))
+
+(defun make-recombination-parents (time edge breakpoint)
+  "Example: (make-recombination-parents .99 `(.1 ,*osiset ((1 . 7) (9 . 11)) nil) 3)"
+  (let ((list-of-osisets (rest edge)))
+    (loop for osiset in list-of-osisets
+          for split-set = (split-osiset breakpoint osiset)
+          collect (first split-set) into left-parent
+          collect (second split-set) into right-parent
+          finally (return (list (cons time left-parent) (cons time right-parent))))))
+
+;; For making initial an linages sets (P,Q) at the start of each leaf
+;; population, we use the following function.
+
+(defun make-leaf-sample (i n-total-leaf-number k-sequence-length leaf)
+  "Make the i-th initial sample for a phylogenetic tree with a number of taxa
+equal to n-total-leaf-number, and when sequences are length k-sequence-length."
+  (let ((new-lineage
+          (list
+           (list
+            (cons (get-parameter :population-start-time leaf)
+                  (append (make-list (- i 1))
+                          (cons (list (make-interval 1 k-sequence-length))
+                                (make-list (- n-total-leaf-number i)))))))))
+    (progn
+      (when *mscr-verbose-mode*
+        (format t "~%~%LINEAGE ~a CREATED in ~a at time ~a~%One lineage added: ~a"
+                i (get-population-name leaf) (get-parameter :population-start-time leaf)
+                (first (first new-lineage))))
+      new-lineage)))
+;; example: (make-leaf-sample 1 4 5 *lv1) remember this gives a pair (P,Q) in
+;; which Q=nil and P is a singleton containing only one edge. So the edge is
+;; actually (first (first (make-leaf-sample1 1 4 5 *lv1)))
+
+(defun make-coalescent-parent (time coalescing-pair)
+  "Creates parent edge of two coalescing edges. The input coalescing-edges is of
+the form (x y) where x and y are the edges"
+  (let* ((edge1 (first coalescing-pair))
+	(edge2 (second coalescing-pair))
+        (list1-of-osisets (rest edge1)) ; rename osiset to 'ancestor set'?
+        (list2-of-osisets (rest edge2))) ; rename osiset to 'ancestor set'?
+    (cons time
+          (loop for osiset1 in list1-of-osisets
+                for osiset2 in list2-of-osisets
+                collecting (merge-osisets osiset1 osiset2) into x
+                finally (return x)))))
+
+;; This implements coalescences.
+
+(defun implement-coalescence (time edge-sets &optional (population-name nil))
+  "Updates the edge-sets (p,q) appropriately for when a recombination occurs at
+the given time."
+  (let* ((active-lineages (first edge-sets))
+         (inactive-lineages (second edge-sets))
+         (coalescing-pair (randomly-choose active-lineages 2))
+         (coalescent-parent (make-coalescent-parent time coalescing-pair))
+         (new-p (cons coalescent-parent (remove-elements coalescing-pair active-lineages)))
+         (new-q (cons coalescent-parent inactive-lineages)))
+    (progn
+      (when *mscr-verbose-mode*
+        (format t "~%~%COALESCENCE in ~a at time ~a" population-name time)
+        (format t "~%Two child edges removed: ~a" (first coalescing-pair))
+        (format t "~%                         ~a" (second coalescing-pair))
+        (format t "~%One parent edge created: ~a" coalescent-parent))
+      (list new-p new-q))))
+
+;; The next function is the key auxillary function to the main simulator; it
+;; simulates the ARG process in a *single* population. It is analogous to
+;; 'arg-builder' in simulator.lisp.
 
 (defun build-single-population-arg (ρ t_0 t_end population-name k-sequence-length
                                     edge-sets &optional (stop-at-mrca nil))
@@ -745,16 +822,7 @@ start time t_0 and end time t_end."
 	     (implement-coalescence t_1 edge-sets population-name))
 	 stop-at-mrca))))
 
-
-;; This is the main simulator. It is currently running without error, but the
-;; output is not correct. It looks like some of the subroutines borrowed from
-;; the earlier simulator need to be modified... Actually, I think I fixed those
-;; issues now. I need to make mscr into an auxillary function mscr-aux, and then
-;; write an intial function mscr which treats the root population differently
-;; (i.e. by setting 'stop-at-mrca' to true when calling
-;; 'build-single-population-arg'.
-(defun mscr (species-tree k-sequence-length)
-  (mscr-aux (count-number-of-leaves species-tree) k-sequence-length species-tree))
+;; The next two functions define the top-level of the MSCR simulator.
 
 (defun mscr-aux (n k tree)
   "Auxilliary function for mscr. The variable 'n' is number of leaves on the
@@ -769,155 +837,105 @@ initial (i.e. full) tree, 'k' is the length of the sequences in base pairs."
                                      (get-parameter :population-start-time tree)
                                      (get-parameter :population-end-time tree)
                                      (get-parameter :population-label tree) ; maybe use the numeric labels?
-                                     k ; sequence length
+                                     k
                                      starting-lineages
                                      (rootp tree)))))
 
-;; could simplify things even further by making k and n global variables...
-;; left off here :)
+(defun mscr (species-tree k-sequence-length)
+  (mscr-aux (count-number-of-leaves species-tree) k-sequence-length species-tree))
+
+;; We could simplify the code even further by making k,n, and edge-sets global
+;; variables. In particular, if edge-sets were a global variable, we could
+;; modify it using setf. I don't think it would be appreciably faster, but the
+;; code would probably be shorter.
 
 ;;______________________________________________________________________________
 ;;
-;; Part 9. Symbolic Integer Intervals
+;; Part 9. MISC from Part 8: notes, vars, examples, and alternative functions.
 ;;______________________________________________________________________________
 ;;
 
-;; Intervals
-;;
-;; In this section, we consider sets of integer intervals, where integer
-;; intervals take the form (m . n) = {m,m+1,...,n}, where m=<n. We say that two
-;; integer intervals (a . b) and (c . d) are separated iff either b+1<d or
-;; d+1<a. Obviously, separatedness is strictly stronger than disjointedness. For
-;; example, the intervals (1 . 3) and (4 . 8) are disjoint but not separated.
-;;
-;; If two integer intervals are not separated, we say that they are overlapping.
-;; While this terminology is not consistent with regular use of the term
-;; 'overlapping', it is useful to give a name to the property.
-;;
-;; In particular, we will consider lists of separated intervals of integers
-;; which are ordered increasing by magnitude. We call such lists osisets (for
-;; "ordered separated interval sets". Examples oisets: '((1 . 4) (6 . 10) (12 .
-;; 29)). Nonexamples: '((1 . 5) (6 . 10) (12 . 29)) and '((1. 5) (12 . 29) (6 .
-;; 10)).
-;;
-;;
-;; Useful facts:
-;;   1. The union of overlapping intervals is an interval,
-;;   2. Intervals intervals (a . b) and (c . d) overlap iff a=<d+1 AND c=<b+1
+(defparameter *leaf-sample1 (make-leaf-sample 1 4 500 *lv1))
+(defparameter *leaf-sample2 (make-leaf-sample 2 4 500 *lv1))
+(defparameter *leaf-sample3 (make-leaf-sample 3 4 500 *lv1))
+(defparameter *leaf-sample4 (make-leaf-sample 4 4 500 *lv1))
+(defparameter test1* (list (interval 1 30) (interval 1 30)))
+(defparameter test2* (list (interval 31 60) (interval 31 60)))
 
-
-
+(defparameter *osiset1 '((1 . 4) (6 . 10) (12 . 15) (19 . 20)))
+(defparameter *osiset2 '((1 . 3) (9 . 13) (25 . 30)))
+(merge-osisets *osiset1 *osiset2)
 
 (defparameter *osiset '((1 . 4) (6 . 10) (12 . 40)))
 (defparameter *nonexample '((1 . 5) (6 . 10) (12 . 40)))
 (defparameter *osiset '((1 . 2) (4 . 59) (61 . 65) (70 . 80) (90 . 100)))
 
+(defparameter tedges '(((4.584407128516051d0
+                           ((2 . 3) (5 . 10))
+                           ((4 . 4) (7 . 10))
+                           ((1 . 10))))))
+
+;; Old format for input edges: 
+;; INPUT EDGE: (.1 ,(interval 1 7)
+;;                 ,(interval 3 6)
+;;                 ,(interval 2 10))
+;; SAMPLE EDGE: (NIL NIL (1 2 3 4 5 6 7) NIL NIL)
+
+;; New format for input edges:
+;; INPUT EDGE: (.1 osiset-1 ... osiset-n)
+
+(make-coalescent-parent 999 (list (first (first *leaf-sample1)) (first (first *leaf-sample2))))
+
+;; Another example:
+(defparameter *edge1 (first (first *leaf-sample1)))
+(defparameter *edge2 '(0.1 nil ((1 . 4) (6 . 10) (12 . 40)) ((1 . 7) (9 . 11)) NIL))
+(make-coalescent-parent .99 (list *edge1 *edge2))
+(merge-output-edge-sets *leaf-sample1 *leaf-sample2)
+
+;; ;; The following verison is somewhat faster. Can use either nconc or append --
+;; ;; nconc is faster, I have to check that it doesn't screws anything up.
+;; (defun merge-output-edge-sets1 (child-1 child-2)
+;;   "Combine the output edge sets child-1=(P_1,Q_1) and child-2=(P_2,Q_2) from two
+;; daughter populations for entry into their parent population. Output a pair
+;; of (P,Q) of active and inactive edges in the appropriate format for use in
+;; arg-builder. Note that if one of the edge-sets is nil, this will just output the
+;; other edge set. Recall that the set P consists of those lineages which are
+;; active in the sense that they may still undergo coalescent or recombination
+;; events. The seq Q contains lineages which have been deactivated as a result of
+;; undergoing coalescent events -- but these can't just be thrown out because they
+;; contain information about MRCAs."
+;;   (list (append (first child-1) (first child-2))
+;;         (append (second child-1) (second child-2))))
 
 
-(defun upper (I)
-  (cdr I))
-(defun lower (I)
-  (car I))
+;; ;; Another version of this file is given here, which does not rely on
+;; ;; remove-elements (which might be slow) and does not rely on randomly-choose. I
+;; ;; expect this to perform better when n is large, but I could be wrong.
+;; (defun implement-coalescence1 (time edge-sets &optional (population-name nil))
+;;   (let* ((n (length edge-sets))
+;;          (index1 (random n))
+;;          (index2 (randomly-choose-excluding n index1))
+;;          (active-lineages (first edge-sets))
+;;          (coalescing-pair (list (nth index1 active-lineages)
+;;                                 (nth index2 active-lineages)))
+;;          (coalescent-parent (make-coalescent-parent time coalescing-pair))
+;;          (new-p (cons coalescent-parent
+;;                       (loop for i from 0 upto (1- n)
+;;                             unless (or (= i index1) (= i index2))
+;;                               collect (nth i active-lineages))))
+;;          (new-q (cons coalescent-parent (second edge-sets))))
+;;     ;; (Format T "~%~%COALESCENCE In ~A At Time ~A" Population-Name Time)
+;;     ;; (Format T "~%Two Child Edges Removed: ~A" (First Coalescing-Pair))
+;;     ;; (Format T "~%                         ~A" (Second Coalescing-Pair))
+;;     ;; (Format T "~%One Parent Edge Created: ~A" Coalescent-Parent)
+;;     (list new-p new-q)))
 
-(defun separatedp (I J)
-  "Test if two integer intervals I and J are separated."
-  (or (< (1+ (cdr I)) (car J))
-      (< (1+ (cdr J)) (car I))))
-
-(defun overlapp (I J)
-  "Test if two integer intervals I and J are overlapping."
-  (not (separatedp I J)))
-
-(defun intervalp (x)
-  "Test if x is an integer interval. The null set is regarded as an interval."
-  (or (null x)
-      (and (consp x)
-           (integerp (car x))
-           (integerp (cdr x))
-           (<= (car x) (cdr x)))))
-
-(defun osisetp (x)
-  "Test if x is an osiset."
-  (if (null (rest x))
-      (intervalp (first x))
-      (and (every 'intervalp x)
-           (< (1+ (upper (first x))) (lower (second x)))
-           (osisetp (rest x)))))
-       
-(defun make-interval (a b)
-  "Make an interval with endpoints a and b."
-  (declare (type integer a b))
-  (if (<= a b)
-      (cons a b)
-      (cons b a)))
-
-;; (defun interval-union (I J)
-;;   "Return the union of two intervals, not necessarily overlapping."
-;;   (if (overlapp I J)
-;;       (make-interval (min (car I)
-;;                           (car J))
-;;                      (max (cdr I)
-;;                           (cdr J)))
-;;       (list I J)))
-
-(defun unite-overlapping-intervals (list-of-intervals)
-  "Input: a list of overlapping intervals. Output: the union of those intervals.
-Does not test whether the input intervals are overlapping."
-  (make-interval (loop for x in list-of-intervals minimizing (car x))
-                 (loop for x in list-of-intervals maximizing (cdr x))))
-
-;; (defun find-overlapping-intervals (I diset)
-;;   (loop for x in diset if (overlapp x I) collecting x))
-
-(defun add-interval-to-osiset (I osiset)
-  "Input: an interval I and a osiset D. Output: a osiset consisting of the
-union of I and D. Example usage: (add-interval-to-osiset '(1 . 111) '((1 . 2) (3
-. 11) (12 . 15)))"
-  (loop for x in osiset
-        with overlap-indicator = nil
-        with intervals-remaining = (length osiset)
-        with interval-added = nil
-        do (decf intervals-remaining)
-        if (overlapp x I)
-          collect x into list-of-overlapping-intervals
-          and do (setf overlap-indicator t)
-          and if (= 0 intervals-remaining)
-                collect (unite-overlapping-intervals (cons I list-of-overlapping-intervals)) into new-osiset end
-        else
-          if overlap-indicator
-            do (setf overlap-indicator nil interval-added t)
-            and collect (unite-overlapping-intervals (cons I list-of-overlapping-intervals)) into new-osiset
-            and collect x into new-osiset
-          else
-            if (and (not interval-added) (< (upper I) (lower x))) collect I into new-osiset and do (setf interval-added t) end
-            and collect x into new-osiset
-            and if (and (> (lower I) (upper x)) (= 0 intervals-remaining)) collect I into new-osiset end
-        finally (return new-osiset)))                  
-        
-(defun split-osiset (breakpoint input-osiset)
-  "Return a list (left-osiset right-osiset) consisting of those points in the
-osiset d which are strictly to the left of the breakpoint and those which
-are (not)strictly to the right. Example useage: (split-osiset 4 '((1 . 3) (5 .
-7)))"
-  (loop for x in input-osiset
-        if (< (upper x) breakpoint) collect x into left-osiset
-        else
-          if (<= breakpoint (lower x)) collect x into right-osiset
-        else
-          collect (make-interval (lower x) (1- breakpoint)) into left-osiset
-          and collect (make-interval breakpoint (upper x)) into right-osiset
-        finally (return (list left-osiset right-osiset))))
-
-(defun number-in-intervalp (x interval)
-  "Test whether the number x is in the interval (an integer interval)."
-  (and (>= x (lower interval))
-       (<= x (upper interval))))
-
-(defun test-membership (x osiset)
-  "Test whether the integer x is contained in the osiset."
-  (loop for interval in osiset
-          thereis (and (>= x (car interval))
-                       (<= x (cdr interval)))))
+;; (defun randomly-choose-excluding (n x)
+;;   "Choose a numbers at random from the set {0,...,n-1}\{x}."
+;;   (let ((output (random n)))
+;;     (if (= output x)
+;;         (randomly-choose-excluding n x)
+;;         output)))
 
 
 
@@ -1075,5 +1093,3 @@ times are give by time-matrix."
 ;; know the leaf times and the root time
 ;; know the number of leaves
 ;; need a tree with the associated parameters :dist-from-parent and :mutation-rate
-;; 
-
