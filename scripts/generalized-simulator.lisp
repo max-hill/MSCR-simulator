@@ -43,6 +43,13 @@
 ;; Sources: The following resource was extremely helpful:
 ;; https://www2.cs.sfu.ca/CourseCentral/310/pwfong/Lisp/3/tutorial3.html
 ;;
+
+;; We start by defining the following global parameters. If *mscr-verbose-mode*
+;; is non-nil, then the MSCR simulator will print output about what it is doing.
+;; This is for testing purposes. 
+(defparameter *mscr-verbose-mode* nil)
+(defparameter *mutation-rate* 1)
+
 ;;______________________________________________________________________________
 ;;
 ;; Part 1. Constructors
@@ -95,32 +102,65 @@
 ;; parameters, a left subtree, and a right subtree (which are both themselves
 ;; either leaf or node populations.
 
-(defun make-leaf (leaf-label distance-from-parent mutation-rate recombination-rate)
-  "Create a leaf."
-  (list
-   (list :population-label leaf-label
-         :dist-from-parent distance-from-parent
-         :mutation-rate mutation-rate
-         :recomb-rate recombination-rate
-         :parent-label nil
-         :population-start-time nil
-         :population-end-time nil
-         :numeric-label nil)))
 
-(defun make-node (node-label distance-from-parent mutation-rate
-                  recombination-rate left-subtree right-subtree)
-  "Create a node."
-  (list
-   (list :population-label node-label
-         :dist-from-parent distance-from-parent
-         :mutation-rate mutation-rate
-         :recomb-rate recombination-rate
-         :parent-label nil
-         :population-start-time nil
-         :population-end-time nil
-         :numeric-label nil)
-   left-subtree
-   right-subtree))
+
+(defun make-leaf
+    (&key
+       (population-name "leaf")
+       (dist-from-parent nil)
+       (mutation-rate *mutation-rate*)
+       (recomb-rate 0)
+       (parent-label "parent")
+       (population-start-time nil)
+       (population-end-time nil)
+       (numeric-label nil))
+  "Create a leaf population (i.e. a population corresponding to a leaf edge of
+the species tree. Consists of a list containing a single element: an alist of
+parameters."
+  (progn
+    (cond ((and (not population-end-time) dist-from-parent population-start-time)
+           (setf population-end-time (+ population-start-time dist-from-parent)))
+          ((and (not dist-from-parent) population-start-time population-end-time)
+           (setf dist-from-parent (- population-end-time population-start-time)))
+          ((and (not population-start-time) population-end-time dist-from-parent)
+           (setf population-start-time (- population-end-time dist-from-parent))))
+    (list
+     (list :population-name population-name
+           :dist-from-parent dist-from-parent
+           :mutation-rate mutation-rate
+           :recomb-rate recomb-rate
+           :parent-label parent-label
+           :population-start-time population-start-time
+           :population-end-time population-end-time
+           :numeric-label numeric-label))))
+
+(defun make-node
+    (&key
+       (population-name "node")
+       (left-subtree nil)
+       (right-subtree nil)
+       (dist-from-parent nil)
+       (mutation-rate *mutation-rate*)
+       (recomb-rate 0)
+       (parent-label "parent")
+       (population-start-time nil)
+       (population-end-time nil)
+       (numeric-label nil))
+  "Create a node population (i.e. a population corresponding to an internal node
+and edge of the species tree. Consists of a list containing three elements: an
+alist of parameters, a left subtree, and a right subtree."
+  (cons
+   (first
+    (make-leaf :population-name population-name
+              :dist-from-parent dist-from-parent
+              :mutation-rate mutation-rate
+              :recomb-rate recomb-rate
+              :parent-label parent-label
+              :population-start-time population-start-time
+              :population-end-time population-end-time
+              :numeric-label numeric-label))
+   (list left-subtree
+         right-subtree)))
 
 ;;______________________________________________________________________________
 ;;
@@ -190,7 +230,7 @@ not affect subtrees."
 (defun get-population-name (tree)
   "Return the name (i.e. label) of the population. Works for both leaves and
 internal nodes."
-  (get-parameter :population-label tree))
+  (get-parameter :population-name tree))
 
 (defun get-parent (tree child-name)
   "Returns the parent node of the vertex with label child-name, which is a
@@ -222,11 +262,6 @@ of test1."
       (+ (count-number-of-leaves (left-subtree tree))
          (count-number-of-leaves (right-subtree tree)))))
 
-(defun get-tree-height (tree)
-  "Return the total height of the tree, i.e. from the top of the root edge to
-  the maximally distant leaf."
-  (get-tree-height-aux tree 0))
-
 (defun get-tree-height-aux (tree x)
   "Auxilliary function for get-tree-height. The variable x is a dummy variable
   for adding up the total height of the tree."
@@ -236,6 +271,11 @@ of test1."
         (max
          (get-tree-height-aux (right-subtree tree) (+ x dist-from-parent))
          (get-tree-height-aux (left-subtree tree) (+ x dist-from-parent))))))
+
+(defun get-tree-height (tree)
+  "Return the total height of the tree, i.e. from the top of the root edge to
+  the maximally distant leaf."
+  (get-tree-height-aux tree 0))
 
 ;; The next function augments the tree parameter plists by recording information
 ;; about parent populations (for easy retreival) and calculating population ages
@@ -248,31 +288,20 @@ about the parents and ages of the populations. The optional variables are used
 for recursion and should not be entered by the user."
   (let* ((dist-from-parent (get-parameter :dist-from-parent tree))
          (current-population-start-time (- parent-age dist-from-parent))
-         (current-population-label (get-parameter :population-label tree)))
+         (current-population-name (get-parameter :population-name tree)))
     (set-population-parameter :parent-label parent-label tree)
     (set-population-parameter :population-start-time current-population-start-time tree)
     (set-population-parameter :population-end-time parent-age tree)
     (unless (leafp tree)
       (add-ages-and-parents (left-subtree tree)
                             current-population-start-time
-                            current-population-label)
+                            current-population-name)
       (add-ages-and-parents (right-subtree tree)
                             current-population-start-time
-                            current-population-label))))
+                            current-population-name))))
 
 ;; The next two functions augment the input tree parameter lists with a
 ;; structured population labeling system.
-
-(defun add-numeric-labels (tree)
-  "Add numeric labels to the tree parameter plists so that leaves are labeled
-with the numbers 1,..,n, and the label of each other nodes is a list consisting
-of the labels of its two children. This function both changes the tree and returns
-the value of the updated tree. The changes made to the tree are idempotent."
-  (progn
-    (defparameter *leaf-number-tracker* 0)
-    (add-numeric-labels-aux tree)
-    (makunbound '*leaf-number-tracker*)
-    tree))
 
 (defun add-numeric-labels-aux (tree)
   "Recursive auxillary function for add-numeric-labels. Note: incf not only
@@ -284,6 +313,17 @@ increments the variable, but also outputs the new value."
        (list (add-numeric-labels-aux (left-subtree tree))
              (add-numeric-labels-aux (right-subtree tree))))
    tree))
+
+(defun add-numeric-labels (tree)
+  "Add numeric labels to the tree parameter plists so that leaves are labeled
+with the numbers 1,..,n, and the label of each other nodes is a list consisting
+of the labels of its two children. This function both changes the tree and returns
+the value of the updated tree. The changes made to the tree are idempotent."
+  (progn
+    (defparameter *leaf-number-tracker* 0)
+    (add-numeric-labels-aux tree)
+    (makunbound '*leaf-number-tracker*)
+    tree))
 
 ;; Finally, the key function of this section is the following.
 
@@ -301,63 +341,71 @@ increments the variable, but also outputs the new value."
 ;; processed with the function 'add-age-parameters-to-tree'
 
 ;; Example 1. A leaf
-(defparameter *l1
-  (make-leaf "A" .1 1 4))
-(defparameter *lv1 (augment-tree-parameters *l1))
-(add-numeric-labels *lv1)
+(defparameter a* (make-leaf :population-name "A" :dist-from-parent 1.7 :recomb-rate 1))
+(augment-tree-parameters a*)
 
-;; Example 2. A node (unbalanced quartet):
-(defparameter *n1
-  (make-node "root" 0 3 0
-             (make-node "ABC" 1 2 3 
-                        (make-node "AB" .1 2 3
-                                   (make-leaf "A" .1 1 4)
-                                   (make-leaf "B" .1 1 1))
-                        (make-leaf "C" .1 1.3 0))
-             (make-leaf "D" 4 1.1 0)))
-(defparameter *nv1 (augment-tree-parameters *n1))
-(add-numeric-labels *nv1)
+;; Example tree: an unbalanced quartet:
 
-;; Example 3. A node (unbalanced quartet):
-(defparameter *n2
-  (make-node "root" 999 3 0
-             (make-node "ABC" 1 2 3 
-                        (make-node "AB" .1 2 3
-                                   (make-leaf "A" .1 1 4)
-                                   (make-leaf "B" .1 1 1))
-                        (make-leaf "C" .1 1.3 0))
-             (make-leaf "D" 4 1.1 0)))
-(defparameter *nv2 (augment-tree-parameters *n2))
-(add-numeric-labels *nv2)
+(defparameter t*
+(make-node :population-name "ABCD"
+           :dist-from-parent 999
+           :recomb-rate 0
+           :left-subtree (make-node
+                           :population-name "ABC"
+                           :dist-from-parent 1
+                           :recomb-rate 1.2
+                           :left-subtree (make-node
+                                           :population-name "AB"
+                                           :dist-from-parent 1.3
+                                           :recomb-rate 3
+                                           :left-subtree (make-leaf
+                                                          :population-name "A"
+                                                          :dist-from-parent 1.7
+                                                          :recomb-rate 1)
+                                           :right-subtree (make-leaf
+                                                           :population-name "B"
+                                                           :dist-from-parent 1.5
+                                                           :recomb-rate 0))
+                           :right-subtree (make-leaf
+                                           :population-name "C"
+                                           :dist-from-parent .6
+                                           :recomb-rate 1.02))
+                           :right-subtree (make-leaf
+                                           :population-name "D"
+                                           :dist-from-parent 4
+                                           :recomb-rate 1.1)))
 
-;; Example 4. A node (balanced quartet):
-(defparameter *n3
-  (make-node "root" 999 .1 .2
-             (make-node "ab" 2 .1 .2
-                        (make-leaf "a" 2 .1 .2)
-                        (make-leaf "b" 2 .1 .2))
-             (make-node "cd" 1 .1 .2
-                        (make-leaf "c" 3 .1 .2)
-                        (make-leaf "d" 2 .1 .2))))
-(defparameter *nv3 (augment-tree-parameters *n3))
-(add-numeric-labels *nv3)
+(augment-tree-parameters t*)
 
-;; Example 5. A 6-taxa tree
-(defparameter *bigbad
-    (make-node "root" 1 2 3
-               (make-node "ABC" 1 2 3 
-                          (make-node "AB" 1 2 3
-                                     (make-leaf "A" 1 2 3)
-                                     (make-leaf "B" 1 2 3))
-                          (make-leaf "C" 1 2 3))
-               (make-node "D123" 1 2 3
-                          (make-node "D12" 1 2 3
-                                     (make-leaf "D1" 1 2 3)
-                                     (make-leaf "D2" 1 2 3))
-                          (make-leaf "D3" 1 2 3))))
-
-(defparameter *bigbad (augment-tree-parameters *bigbad))
-(add-numeric-labels *bigbad)
+;; Example tree: a balanced quartet:
+(defparameter s*
+  (make-node :population-name "ABCD"
+             :dist-from-parent 999
+             :recomb-rate 0
+             :left-subtree (make-node
+                            :population-name "AB"
+                            :dist-from-parent 1
+                            :recomb-rate 1.2
+                            :left-subtree (make-leaf
+                                           :population-name "A"
+                                           :dist-from-parent 1.3
+                                           :recomb-rate 3)
+                            :right-subtree (make-leaf
+                                            :population-name "B"
+                                            :dist-from-parent 1.5
+                                            :recomb-rate 0))
+             :right-subtree (make-node
+                             :population-name "CD"
+                             :dist-from-parent 1.7
+                             :left-subtree (make-leaf
+                                            :population-name "C"
+                                            :dist-from-parent 1
+                                            :recomb-rate 1.02)
+                             :right-subtree (make-leaf
+                                             :population-name "D"
+                                             :dist-from-parent 1
+                                             :recomb-rate 1.1))))
+(augment-tree-parameters s*)
 
 ;;______________________________________________________________________________
 ;;
@@ -401,10 +449,11 @@ random number from the set {0,1,2,3}\{current-nucleotide}. It does this by
 adding 1d3 to the current nucleotide and then reducing the result modulo 4."
   (declare (integer current-nucleotide))
   (let ((new-nucleotide (mod (+ current-nucleotide 1 (random 3)) 4)))
-    (format t "~%Substitution from ~a to ~a in population ~a~%"
-            current-nucleotide
-            new-nucleotide
-            population-name)
+    (when *mscr-verbose-mode*
+      (format t "~%Substitution from ~a to ~a in population ~a~%"
+              current-nucleotide
+              new-nucleotide
+              population-name))
     new-nucleotide))
 
 ;; Substitutions will be performed on each edge with some probability, which is
@@ -418,21 +467,22 @@ specified in Dasarathy, Mossel, Nowak, Roch 'Coalescent-based species tree
 estimation: a stochastic Farris transform'. Output takes the form of a
 pair (label-name nucleotide)."
   (let* ((population-name (get-population-name tree))
-         (edge-length (get-parameter :dist-from-parent tree))
-         (mutation-rate (get-parameter :mutation-rate tree))
          (substitution-probability
-           (* .75 (- 1 (exp (* (/ -4 3) mutation-rate edge-length)))))
+           (* .75 (- 1 (exp (* (/ -4 3)
+                               (get-parameter :dist-from-parent tree)
+                               (get-parameter :mutation-rate tree))))))
          (new-nucleotide
-           (if (< (random 1d0) substitution-probability)
+           (if (< (random 1.0) substitution-probability)
                (implement-substitution parent-nucleotide population-name)
-               (progn (format t "~%No substitution in population ~a~%"
-                              population-name) parent-nucleotide))))
-    (progn
-      (if (leafp tree)
-          (format t "leaf ~a: ~a ~%" population-name new-nucleotide)
-          (unless (rootp tree)
-            (format t "ancestor ~a: ~a ~%" population-name new-nucleotide)))
-      (list population-name new-nucleotide))))
+               (progn (when *mscr-verbose-mode*
+                        (format t "~%No substitution in population ~a~%" population-name))
+                      parent-nucleotide))))
+      (when *mscr-verbose-mode*
+        (if (leafp tree)
+            (format t "leaf ~a: ~a ~%" population-name new-nucleotide)
+            (unless (rootp tree)
+              (format t "ancestor ~a: ~a ~%" population-name new-nucleotide))))
+      (list population-name new-nucleotide)))
 
 ;; The next two functions are the workhorses of our sequence simulator. They use
 ;; the above functions to recursively implement the JC69 process on the input
@@ -457,7 +507,7 @@ the tip of the edge above the root. To make this start exactly at the root (by
 which I mean the mrca of the samples) you should set the 'dist-from-parent' in
 the root vertex to zero."
   (let ((root-state (draw-random-nucleotide)))
-    (progn (format t "Root state: ~a ~%" root-state)
+    (progn (when *mscr-verbose-mode* (format t "Root state: ~a ~%" root-state))
            (evolve-down-tree-aux tree root-state nil))))
 
 ;; It works! Example usage:
@@ -623,12 +673,6 @@ are (not)strictly to the right. Example useage: (split-osiset 4 '((1 . 3) (5 .
 ;;
 ;; This section implements the MSCR simulator on a general binary tree.
 
-;; We start by defining the following global parameter. If *mscr-verbose-mode*
-;; is non-nil, then the MSCR simulator will print output about what it is doing.
-;; This is for testing purposes.
-
-(defparameter *mscr-verbose-mode* nil)
-
 ;; Next we define several general auxillary functions. Most of them were copied
 ;; over from simulator.lisp without change.
 
@@ -710,6 +754,7 @@ this rule.)"
 ;; with three leaves, and (2) to allow for symbolic interval system, rather than
 ;; just tracking sites using the function interval (which is too slow).
 
+(defvar *list-of-breakpoints*)
 (defun implement-recombination (time edge-sets number-of-base-pairs
                                 &optional (population-name nil))
   "Updates the edge-sets (p,q) appropriately for when a coalescence occurs at
@@ -725,6 +770,7 @@ the given time."
 			     (cons recombination-child nil)
 			     (first edge-sets))))))
     (progn
+      (setf *list-of-breakpoints* (cons breakpoint *list-of-breakpoints*))
       (when *mscr-verbose-mode*
         (format t "~%~%RECOMBINATION in ~a at time ~a" population-name time)
         (format t "~%Breakpoint: ~a" breakpoint)
@@ -836,13 +882,15 @@ initial (i.e. full) tree, 'k' is the length of the sequences in base pairs."
         (build-single-population-arg (get-parameter :recomb-rate tree)
                                      (get-parameter :population-start-time tree)
                                      (get-parameter :population-end-time tree)
-                                     (get-parameter :population-label tree) ; maybe use the numeric labels?
+                                     (get-parameter :population-name tree) ; maybe use the numeric labels?
                                      k
                                      starting-lineages
                                      (rootp tree)))))
 
 (defun mscr (species-tree k-sequence-length)
-  (mscr-aux (count-number-of-leaves species-tree) k-sequence-length species-tree))
+  (progn
+    (defparameter *list-of-breakpoints* nil)
+    (mscr-aux (count-number-of-leaves species-tree) k-sequence-length species-tree)))
 
 ;; We could simplify the code even further by making k,n, and edge-sets global
 ;; variables. In particular, if edge-sets were a global variable, we could
@@ -855,10 +903,10 @@ initial (i.e. full) tree, 'k' is the length of the sequences in base pairs."
 ;;______________________________________________________________________________
 ;;
 
-(defparameter *leaf-sample1 (make-leaf-sample 1 4 500 *lv1))
-(defparameter *leaf-sample2 (make-leaf-sample 2 4 500 *lv1))
-(defparameter *leaf-sample3 (make-leaf-sample 3 4 500 *lv1))
-(defparameter *leaf-sample4 (make-leaf-sample 4 4 500 *lv1))
+(defparameter *leaf-sample1 (make-leaf-sample 1 4 500 t*))
+(defparameter *leaf-sample2 (make-leaf-sample 2 4 500 t*))
+(defparameter *leaf-sample3 (make-leaf-sample 3 4 500 t*))
+(defparameter *leaf-sample4 (make-leaf-sample 4 4 500 t*))
 (defparameter test1* (list (interval 1 30) (interval 1 30)))
 (defparameter test2* (list (interval 31 60) (interval 31 60)))
 
@@ -887,9 +935,9 @@ initial (i.e. full) tree, 'k' is the length of the sequences in base pairs."
 (make-coalescent-parent 999 (list (first (first *leaf-sample1)) (first (first *leaf-sample2))))
 
 ;; Another example:
-(defparameter *edge1 (first (first *leaf-sample1)))
-(defparameter *edge2 '(0.1 nil ((1 . 4) (6 . 10) (12 . 40)) ((1 . 7) (9 . 11)) NIL))
-(make-coalescent-parent .99 (list *edge1 *edge2))
+(defparameter edge1* (first (first *leaf-sample1)))
+(defparameter edge2* '(0.1 nil ((1 . 4) (6 . 10) (12 . 40)) ((1 . 7) (9 . 11)) NIL))
+(make-coalescent-parent .99 (list edge1* edge2*))
 (merge-output-edge-sets *leaf-sample1 *leaf-sample2)
 
 ;; ;; The following verison is somewhat faster. Can use either nconc or append --
@@ -941,7 +989,7 @@ initial (i.e. full) tree, 'k' is the length of the sequences in base pairs."
 
 ;;______________________________________________________________________________
 ;;
-;; Part 8. Connecting the MSCR and JC Simulators
+;; Part 10. Connecting the MSCR and JC Simulators
 ;;______________________________________________________________________________
 ;;
 
@@ -966,7 +1014,8 @@ initial (i.e. full) tree, 'k' is the length of the sequences in base pairs."
 
 (defun who-coalesced (time-matrix coal-time n-number-of-species)
   "Return the set of leaf labels whose ancestral lineages underwent coalesence
-at the given coalescence time. Might be better named by something like 'common-ancestor' or 'population-name'"
+at the given coalescence time. Might be better named by something like
+'common-ancestor' or 'population-name'"
   (loop for i from 1 to (1- n-number-of-species)
         appending (loop for j from (1+ i) to n-number-of-species
                         if (= (get-matrix-entry time-matrix i j) coal-time)
@@ -1062,15 +1111,49 @@ times are give by time-matrix."
 
 
 (defun replace-entry (matrix row column new-value)
-  "Replaces a specified matrix element with a new value. Indices start with 1. The function also returns the updated value. Actually uses array data structure."
+  "Replaces a specified matrix element with a new value. Indices start with 1.
+The function also returns the updated value. Actually uses array data
+structure."
   (setf
    (apply #'aref matrix (list (1- row) (1- column)))
    new-value))
 
 
+
+;; The next three functions work - remember, you need only build one marginal
+;; gene tree for each interval between breakpoints, not for every site. This
+;; will speed things up a lot.
+
+(time (sort *list-of-breakpoints* #'<))
+
+(defun common-coordinate (species1 species2 edge position)
+  "test whether the genetic material contained at a specified position on an
+edge is an ancestor to the sampled individual from species1 and species2"
+  (and (test-membership position (nth species1 edge))
+       (test-membership position (nth species2 edge))))
+;; COMMENTARY: The inputs 'species1' and 'species2' take values 1,2,3,
+;; corresponding to species A,B,C respectively. To compute all distances, we
+;; will need to loop over all pairs (species1,species2) where species1 and
+;; species2 are not equal
+;;
+;; Example code: (common-coordinate 1 3 '(0 (1 2 3) NIL (2 3)) 2) would return
+;; true, since 2 is contained in both (1 2 3) and (2 3).
+
+(defun common-coordinate (leaf1 leaf2 edge site)
+  "Test whether an edge is ancestral to a specified site sampled from two leaf
+samples. In other words, test whether the edge contains that site for both
+species."
+  (and (test-membership site (nth leaf1 edge))
+       (test-membership site (nth leaf2 edge))))
+                   
+
 (defvar *time-matrix*)
 (defun construct-time-matrix (n-number-of-species edge-set site-number)
-  "INPUT: an edge set (i.e. (second output-edges) or (union (first output-egdes) (second output-edges))) as well as the number of species and a site number. OUTPUT: a matrix of TIMES of coalescences. Let this matrix be M=(m_{ij}). Then 2m_{ij} - d_i - d_j is the coalescence time of i and j, where d_i is the START time of loci i"
+  "INPUT: an edge set (i.e. (second output-edges) or (union (first
+output-egdes) (second output-edges))) as well as the number of species and a
+site number. OUTPUT: a matrix of TIMES of coalescences. Let this matrix be
+M=(m_{ij}). Then 2m_{ij} - d_i - d_j is the coalescence time of i and j, where
+d_i is the START time of loci i"
   (loop
     initially
        (setf *time-matrix*
@@ -1093,3 +1176,130 @@ times are give by time-matrix."
 ;; know the leaf times and the root time
 ;; know the number of leaves
 ;; need a tree with the associated parameters :dist-from-parent and :mutation-rate
+
+
+(defun find-descendants (site edge)
+  "Return a list of those species which inherit site i from the lineage edge. If
+the edge does not have site as an ancestor for any species, return nil."
+  (loop for osiset in (rest edge) 
+        for species-number from 1
+        when (test-membership site osiset)
+          collect species-number into descendants
+        finally (return descendants)))
+
+
+(defparameter *mscr-output* '(((5.788608309440108d0 ((1 . 1000)) ((1 . 1000)) ((1 . 1000)) ((1 . 1000))))
+                              ((5.788608309440108d0 ((1 . 1000)) ((1 . 1000)) ((1 . 1000)) ((1 . 1000)))
+                               (4.885826667890404d0 ((353 . 605)) ((353 . 605)) ((1 . 1000)) NIL)
+                               (4.266150707283983d0 ((1 . 352) (606 . 1000)) ((1 . 352) (606 . 1000)) NIL
+                                ((1 . 1000)))
+                               (2.949941650510326d0 ((353 . 1000)) ((353 . 1000)) NIL NIL)
+                               (1.9481898222457033d0 ((1 . 1000)) ((1 . 1000)) NIL NIL)
+                               (3.8150415999214697d0 ((1 . 352)) ((1 . 352)) NIL NIL)
+                               (3.9228970527341116d0 ((1 . 352) (606 . 1000)) ((1 . 352) (606 . 1000)) NIL
+                                NIL))))
+
+;; we will loop through (second mscr-output),
+(defun process-mscr-output (mscr-output)
+  "Return the coalescent lineages, ordered ascending by time. This destroys the mscr-output"
+  (sort (second mscr-output) #'< :key #'car ))
+
+(defparameter *sorted-edges* (process-mscr-output *mscr-output*))
+
+
+;; The next variable is a list of labels of those lineages which have coalesced.
+;; Elements take the form e.g. (1 2 3), which represents the lineage ancestral
+;; to leaves 1, 2, and 3. When two lineages coalesce, we merge their
+;; corresponding labels by taking a union. When a node coalesces with a leaf, we
+;; cons the leaf number on. When two nodes coalesce, we append their labels.
+(defparameter *previously-coalesced* '((1 2)))
+
+(defparameter *previously-coalesced* '((1) (2) (3) (4)))
+
+;; The next variable is an alist of tree components. Elements take the 
+(defparameter *tree-builder* nil)
+
+
+
+;;we will fix a site i, and then loop through *sorted-edges*, constructing a
+;;node of the tree for each edge containing site i. Constructed nodes will be stored in *tree-builder*.
+(defparameter *example-edge* '(5.788608309440108d0 ((1 . 1000)) ((1 . 1000)) ((1 . 1000)) ((1 . 1000))))
+(defparameter *example-edge* '(4.266150707283983d0 ((1 . 352) (606 . 1000)) ((1 . 352) (606 . 1000)) NIL ((1 . 1000))))
+(defparameter *example-edge* '(2.949941650510326d0 ((353 . 1000)) ((353 . 1000)) NIL NIL))
+(defparameter *example-site* 352)
+
+;; the following code is for constructing a node when given an input edge and a site i
+(let* ((all-descendants-of-lineage (find-descendants *example-site* *example-edge*))
+       (coalescence-time (first *example-edge*))
+       (lineage-pair (loop for x in *previously-coalesced*
+                           with r = all-descendants-of-lineage ; r = remaining lineages
+                           until (<= (length r) 1)
+                           when (sort (intersection x r) #'<)
+                             collect it into lineage-pair
+                             and do (setf r (set-difference r (intersection r x)))
+                           finally
+                              (return (cond (;; both lineages are nodes -- so return the coalescing pair
+                                             (= (length lineage-pair) 2)
+                                             lineage-pair)
+                                            
+                                             ;; one lineage is a node and the other is a leaf
+                                            (
+                                             (and (= (length lineage-pair) 1)
+                                                  (= (length r) 1))
+                                             (list (first lineage-pair) r))
+                                             ;; the lineages have already coalesced previously
+                                             ;; and we've already processed the more recent coalescent time,
+                                             ;; so we should just ignore this one
+                                            (
+                                             (and (= (length lineage-pair) 1)
+                                                  (= (length r) 0))
+                                             nil)
+                                             ;; both lineages are leaves
+                                            (
+                                             (and (= (length lineage-pair) 0)
+                                                  (= (length r) 2))
+                                             r))))))
+  (list all-descendants-of-lineage coalescence-time lineage-pair))
+       
+                              
+  (cond ((endp lineage-pair) ; two leaves are coalescing
+         (setf *tree-builder*
+               (acons all-descendants-of-lineage
+                      (make-node :population-name (first all-descendants-of-lineage)
+                                 :population-start-time coalescence-time
+                                 :left-subtree
+                                 (make-leaf :population-name (first all-descendants-of-lineage)
+                                            :population-start-time "need to get this from species tree"
+                                            :dist-from-parent "need to get this from species tree"
+                                            :population-end-time coalescence-time)
+                                 :right-subtree
+                                 (make-leaf :population-name (second all-descendants-of-lineage)
+                                            :population-start-time "need to get this from species tree"
+                                            :dist-from-parent "need to get this from species tree"
+                                            :population-end-time coalescence-time))
+                      *previously-coalesced*)
+               *previously-coalesced*
+               (cons all-descendants-of-lineage *previously-coalesced*)))
+
+        ((= 1 (length lineage-pair)) ; leaf is coalescing with a node
+         (setf *tree-builder*
+               (acons all-descendants-of-lineage
+                      (make-node :population-name (first all-descendants-of-lineage)
+                                 :population-start-time coalescence-time
+                                 :left-subtree
+                                 ; left off here
+                                 (cdr (assoc something *tree-builder* :test #'equalp))
+                                 (assoc lineage-pair
+                                 :right-subtree
+                                 (make-leaf :population-name (second all-descendants-of-lineage)
+                                            :population-start-time "need to get this from species tree"
+                                            :dist-from-parent "need to get this from species tree"
+                                            :population-end-time coalescence-time))
+                      *previously-coalesced*)
+               *previously-coalesced*
+               (cons all-descendants-of-lineage *previously-coalesced*)))
+        
+         ((= 2 (length lineage-pair)) "case 2") ; two nodes are coalescing
+         (t "if you got here something went wrong"))
+        )
+
