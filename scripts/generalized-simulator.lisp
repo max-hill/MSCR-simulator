@@ -3,7 +3,7 @@
 ;;;;                                construction.
 ;;
 ;; Author: max hill 
-;; (Last updated 2022-05-30)
+;; (Last updated 2022-06-05)
 
 ;; DESCRIPTION: Here we attempt to implement a simulator which takes as input a
 ;; binary tree T (ideally in newick tree format, with branch lengths) and output
@@ -754,7 +754,18 @@ this rule.)"
 ;; with three leaves, and (2) to allow for symbolic interval system, rather than
 ;; just tracking sites using the function interval (which is too slow).
 
-(defvar *list-of-breakpoints*)
+(defvar *list-of-breakpoints* nil)
+
+(defun make-recombination-parents (time edge breakpoint)
+  "Example: (make-recombination-parents .99 `(.1 ,*osiset ((1 . 7) (9 . 11)) nil) 3)"
+  (let ((list-of-osisets (rest edge)))
+    (loop for osiset in list-of-osisets
+          for split-set = (split-osiset breakpoint osiset)
+          collect (first split-set) into left-parent
+          collect (second split-set) into right-parent
+          finally (return (list (cons time left-parent) (cons time right-parent))))))
+
+
 (defun implement-recombination (time edge-sets number-of-base-pairs
                                 &optional (population-name nil))
   "Updates the edge-sets (p,q) appropriately for when a coalescence occurs at
@@ -778,15 +789,6 @@ the given time."
         (format t "~%Two parent edges added: ~a" (first recombination-parents))
         (format t "~%                        ~a" (second recombination-parents)))
       (list new-p (second edge-sets)))))
-
-(defun make-recombination-parents (time edge breakpoint)
-  "Example: (make-recombination-parents .99 `(.1 ,*osiset ((1 . 7) (9 . 11)) nil) 3)"
-  (let ((list-of-osisets (rest edge)))
-    (loop for osiset in list-of-osisets
-          for split-set = (split-osiset breakpoint osiset)
-          collect (first split-set) into left-parent
-          collect (second split-set) into right-parent
-          finally (return (list (cons time left-parent) (cons time right-parent))))))
 
 ;; For making initial an linages sets (P,Q) at the start of each leaf
 ;; population, we use the following function.
@@ -932,9 +934,8 @@ initial (i.e. full) tree, 'k' is the length of the sequences in base pairs."
 ;; New format for input edges:
 ;; INPUT EDGE: (.1 osiset-1 ... osiset-n)
 
+;; examples:
 (make-coalescent-parent 999 (list (first (first *leaf-sample1)) (first (first *leaf-sample2))))
-
-;; Another example:
 (defparameter edge1* (first (first *leaf-sample1)))
 (defparameter edge2* '(0.1 nil ((1 . 4) (6 . 10) (12 . 40)) ((1 . 7) (9 . 11)) NIL))
 (make-coalescent-parent .99 (list edge1* edge2*))
@@ -991,153 +992,8 @@ initial (i.e. full) tree, 'k' is the length of the sequences in base pairs."
 ;;
 ;; Part 10. Connecting the MSCR and JC Simulators
 ;;______________________________________________________________________________
-;;
 
 
-;; ((4.584407128516051d0 (1) (1) (1) (1))
-;;  (4.497471958701756d0 NIL NIL (1) NIL)
-;;  (4.025203326294506d0 (1) (1) NIL (1))
-;;  (2.693733411688349d0 (1) (1) NIL NIL))
-
-;; ((4.584407128516051d0 (2) (2) (2) (2))
-;;  (4.497471958701756d0 NIL NIL (2) NIL)
-;;  (4.025203326294506d0 (2) (2) NIL (2))
-;;  (2.693733411688349d0 (2) (2) NIL NIL))
-
-;; 1: (0 2.7 4.0 4.6) 
-;; 2: (0 2.7 4.0 4.6)
-;; 4: (1 4.0 4.6)
-;; 3: (0 4.6)
-
-;; The following function will be used to convert our time matrix into input for
-;; the Jukes-Cantor process. 
-
-(defun who-coalesced (time-matrix coal-time n-number-of-species)
-  "Return the set of leaf labels whose ancestral lineages underwent coalesence
-at the given coalescence time. Might be better named by something like
-'common-ancestor' or 'population-name'"
-  (loop for i from 1 to (1- n-number-of-species)
-        appending (loop for j from (1+ i) to n-number-of-species
-                        if (= (get-matrix-entry time-matrix i j) coal-time)
-                          collect i into inner-output
-                          and collect j into inner-output
-                        finally (return inner-output))
-          into outer-output
-        finally (return (remove-duplicates outer-output))))
-
-;; To use the above function, we will need a descending list of coalescent
-;; times.
-
-(defun get-list-of-coal-times (time-matrix n-number-of-species)
-  "Return a sorted (descending) set of coalescent times for the n species whose
-times are give by time-matrix."
-  (loop for row from 1 to (1- n-number-of-species)
-        appending (loop for column from (1+ row) to n-number-of-species
-                        collecting (get-matrix-entry time-matrix row column)
-                          into inner-output
-                        finally (return inner-output))
-          into outer-output
-        finally (return (sort (remove-duplicates outer-output)
-                              '>))))
-
-
-;; (get-list-of-coal-times *time-matrix* 4)
-;; (defparameter *ct* '(4.584407128516051d0 4.025203326294506d0 2.693733411688349d0))
-;; (who-coalesced *time-matrix* (third (get-list-of-coal-times *time-matrix* 4)) 4)
-;; (who-coalesced *time-matrix* (second (get-list-of-coal-times *time-matrix* 4)) 4)
-;; (who-coalesced *time-matrix* (first (get-list-of-coal-times *time-matrix* 4)) 4)
-
-(defun make-marginal-tree (descending-coal-times time-matrix n)
-  (if (= 1 (length (who-coalesced *time-matrix* (first descending-coal-times) n)
-                   (make-leaf descending-coal-times 1 .1 0)
-                   (let* ((current-lineage
-                            (who-coalesced *time-matrix* (first descending-coal-times) n))
-                          (left-lineage
-                            (who-coalesced *time-matrix* (second descending-coal-times) n))
-                          (right-lineage
-                            (set-difference current-lineage right-lineage)))
-                     (make-node current-lineage 1 .1 0
-                                (make-marginal-tree left-lineage time-matrix n)
-                                (make-marginal-tree right-lineage time-matrix n)))))))
-
-
-
-
-;; Essentially, we want to make something like this:
-;; (make-node 
-;;  "1234" 0 .1 0 
-;;  (make-node 
-;;   "124" 
-;;   (- 4.584407128516051d0 4.025203326294506d0)
-;;   0.1 0 
-;;   (make-node 
-;;    "12" 
-;;    (- 4.025203326294506d0 2.693733411688349d0)
-;;    .1 0
-;;    (make-leaf "1" 0 .1 0)
-;;    (make-leaf "2" 0 .1 0))
-;;   (make-leaf
-;;    "4"
-;;    (- 4.025203326294506d0 1)
-;;    .1 0))
-;;  (make-leaf
-;;   "3"
-;;   (- 4.584407128516051d0 0)
-;;   .1 0))
-
-(defun build-marginal-tree (time-matrix n-number-of-species list-of-descending-coal-times)
-  (if ))
-
-;; 1. Make a list of coalescent times in ascending order for each leaf
-;; 2. Do we also include the leaf start times?
-
-(defun get-matrix-entry (matrix row column)
-  "Retrieve an entry of an array as if it were a matrix (indexing starts at 1)."
-  (aref matrix (1- row) (1- column)))
-
-;; ((4.584407128516051d0 (3) (3) (3) (3))
-;;  (4.497471958701756d0 (3) (3) (3) (3))
-;;  (4.025203326294506d0 (3) (3) NIL (3))
-;;  (2.693733411688349d0 (3) (3) NIL NIL))
-
-(defvar tedges)
-(defvar test-edge-set)
-(setf tedges '(((4.584407128516051d0 (2 1 3) (2 1 3) (1 2 3) (1 2 3)))
-               ((4.584407128516051d0 (2 1 3) (2 1 3) (1 2 3) (1 2 3))
-                (4.497471958701756d0 (3) (3) (3 2 1) (3))
-                (4.025203326294506d0 (1 2 3) (1 2 3) NIL (3 2 1))
-                (2.693733411688349d0 (3 2 1) (3 2 1) NIL NIL))))
-(setf test-edge-set (second tedges))
-
-
-(defun replace-entry (matrix row column new-value)
-  "Replaces a specified matrix element with a new value. Indices start with 1.
-The function also returns the updated value. Actually uses array data
-structure."
-  (setf
-   (apply #'aref matrix (list (1- row) (1- column)))
-   new-value))
-
-
-
-;; The next three functions work - remember, you need only build one marginal
-;; gene tree for each interval between breakpoints, not for every site. This
-;; will speed things up a lot.
-
-(time (sort *list-of-breakpoints* #'<))
-
-(defun common-coordinate (species1 species2 edge position)
-  "test whether the genetic material contained at a specified position on an
-edge is an ancestor to the sampled individual from species1 and species2"
-  (and (test-membership position (nth species1 edge))
-       (test-membership position (nth species2 edge))))
-;; COMMENTARY: The inputs 'species1' and 'species2' take values 1,2,3,
-;; corresponding to species A,B,C respectively. To compute all distances, we
-;; will need to loop over all pairs (species1,species2) where species1 and
-;; species2 are not equal
-;;
-;; Example code: (common-coordinate 1 3 '(0 (1 2 3) NIL (2 3)) 2) would return
-;; true, since 2 is contained in both (1 2 3) and (2 3).
 
 (defun common-coordinate (leaf1 leaf2 edge site)
   "Test whether an edge is ancestral to a specified site sampled from two leaf
@@ -1145,38 +1001,16 @@ samples. In other words, test whether the edge contains that site for both
 species."
   (and (test-membership site (nth leaf1 edge))
        (test-membership site (nth leaf2 edge))))
-                   
-
-(defvar *time-matrix*)
-(defun construct-time-matrix (n-number-of-species edge-set site-number)
-  "INPUT: an edge set (i.e. (second output-edges) or (union (first
-output-egdes) (second output-edges))) as well as the number of species and a
-site number. OUTPUT: a matrix of TIMES of coalescences. Let this matrix be
-M=(m_{ij}). Then 2m_{ij} - d_i - d_j is the coalescence time of i and j, where
-d_i is the START time of loci i"
-  (loop
-    initially
-       (setf *time-matrix*
-             (make-array (list n-number-of-species n-number-of-species)
-                         :initial-element -1))
-    for i from 1 to (1- n-number-of-species)
-    do (loop for j from (1+ i) to
-             n-number-of-species
-             do (replace-entry *time-matrix* i j
-                               (get-tmrca i j edge-set site-number))))
-  *time-matrix*)
-
-
-(defun get-tmrca (species1 species2 edge-set site-number)
-  (loop for x in edge-set
-        if (common-coordinate species1 species2 x site-number)
-          minimizing (first x)))
-
-
-;; know the leaf times and the root time
-;; know the number of leaves
-;; need a tree with the associated parameters :dist-from-parent and :mutation-rate
-
+;; COMMENTARY: The inputs 'leaf1' and 'leaf2' take values 1,2,3,
+;; corresponding to species A,B,C respectively. To compute all distances, we
+;; will need to loop over all pairs (species1,species2) where leaf1 and
+;; leaf2 are not equal
+;;
+;; Example code:
+;; * (common-coordinate 1 2 '(3.9 ((1 . 352) (606 . 1000)) ((1 . 352) (606 . 1000)) nil nil) 352)
+;; T
+;; * (common-coordinate 1 2 '(3.9 ((1 . 352) (606 . 1000)) ((1 . 352) (606 . 1000)) nil nil) 353)
+;; NIL
 
 (defun find-descendants (site edge)
   "Return a list of those species which inherit site i from the lineage edge. If
@@ -1186,26 +1020,30 @@ the edge does not have site as an ancestor for any species, return nil."
         when (test-membership site osiset)
           collect species-number into descendants
         finally (return descendants)))
+;; Example: (find-descendants 23 '(3.9 ((1 . 352) (606 . 1000)) ((1 . 352) (606 . 1000)) nil nil))
 
+;; Consider the following example data:
 
 (defparameter *mscr-output* '(((5.788608309440108d0 ((1 . 1000)) ((1 . 1000)) ((1 . 1000)) ((1 . 1000))))
                               ((5.788608309440108d0 ((1 . 1000)) ((1 . 1000)) ((1 . 1000)) ((1 . 1000)))
                                (4.885826667890404d0 ((353 . 605)) ((353 . 605)) ((1 . 1000)) NIL)
-                               (4.266150707283983d0 ((1 . 352) (606 . 1000)) ((1 . 352) (606 . 1000)) NIL
-                                ((1 . 1000)))
+                               (4.266150707283983d0 ((1 . 352) (606 . 1000)) ((1 . 352) (606 . 1000)) NIL ((1 . 1000)))
                                (2.949941650510326d0 ((353 . 1000)) ((353 . 1000)) NIL NIL)
                                (1.9481898222457033d0 ((1 . 1000)) ((1 . 1000)) NIL NIL)
                                (3.8150415999214697d0 ((1 . 352)) ((1 . 352)) NIL NIL)
-                               (3.9228970527341116d0 ((1 . 352) (606 . 1000)) ((1 . 352) (606 . 1000)) NIL
-                                NIL))))
+                               (3.9228970527341116d0 ((1 . 352) (606 . 1000)) ((1 . 352) (606 . 1000)) NIL NIL))))
+;; which has the following breakpoints
+(defparameter *recombination-breakpoints* '(1 352 606))
+(defparameter *example-site* 1)
 
-;; we will loop through (second mscr-output),
+;; We process the data with the following function, which reorders the relevant
+;; edges so that the coalescent times are ascending.
 (defun process-mscr-output (mscr-output)
-  "Return the coalescent lineages, ordered ascending by time. This destroys the mscr-output"
-  (sort (second mscr-output) #'< :key #'car ))
+  "Return the coalescent lineages, ordered ascending by time. Nondestructive.
+Remove copy-list to make it destructive (but faster)."
+  (sort (copy-list (second mscr-output)) #'< :key #'car ))
 
 (defparameter *sorted-edges* (process-mscr-output *mscr-output*))
-
 
 ;; The next variable is a list of labels of those lineages which have coalesced.
 ;; Elements take the form e.g. (1 2 3), which represents the lineage ancestral
@@ -1214,54 +1052,332 @@ the edge does not have site as an ancestor for any species, return nil."
 ;; cons the leaf number on. When two nodes coalesce, we append their labels.
 (defparameter *previously-coalesced* '((1 2)))
 
-(defparameter *previously-coalesced* '((1) (2) (3) (4)))
 
 ;; The next variable is an alist of tree components. Elements take the 
 (defparameter *tree-builder* nil)
 
-
-
-;;we will fix a site i, and then loop through *sorted-edges*, constructing a
-;;node of the tree for each edge containing site i. Constructed nodes will be stored in *tree-builder*.
-(defparameter *example-edge* '(5.788608309440108d0 ((1 . 1000)) ((1 . 1000)) ((1 . 1000)) ((1 . 1000))))
-(defparameter *example-edge* '(4.266150707283983d0 ((1 . 352) (606 . 1000)) ((1 . 352) (606 . 1000)) NIL ((1 . 1000))))
-(defparameter *example-edge* '(2.949941650510326d0 ((353 . 1000)) ((353 . 1000)) NIL NIL))
-(defparameter *example-site* 352)
+;; PLAN: We will fix a site i, and then loop through *sorted-edges*,
+;; constructing a node of the tree for each edge containing site i. Constructed
+;; nodes will be stored in *tree-builder*.
 
 ;; the following code is for constructing a node when given an input edge and a site i
-(let* ((all-descendants-of-lineage (find-descendants *example-site* *example-edge*))
-       (coalescence-time (first *example-edge*))
-       (lineage-pair (loop for x in *previously-coalesced*
-                           with r = all-descendants-of-lineage ; r = remaining lineages
-                           until (<= (length r) 1)
-                           when (sort (intersection x r) #'<)
-                             collect it into lineage-pair
-                             and do (setf r (set-difference r (intersection r x)))
-                           finally
-                              (return (cond (;; both lineages are nodes -- so return the coalescing pair
-                                             (= (length lineage-pair) 2)
-                                             lineage-pair)
-                                            
-                                             ;; one lineage is a node and the other is a leaf
-                                            (
-                                             (and (= (length lineage-pair) 1)
-                                                  (= (length r) 1))
-                                             (list (first lineage-pair) r))
-                                             ;; the lineages have already coalesced previously
-                                             ;; and we've already processed the more recent coalescent time,
-                                             ;; so we should just ignore this one
-                                            (
-                                             (and (= (length lineage-pair) 1)
-                                                  (= (length r) 0))
-                                             nil)
-                                             ;; both lineages are leaves
-                                            (
-                                             (and (= (length lineage-pair) 0)
-                                                  (= (length r) 2))
-                                             r))))))
-  (list all-descendants-of-lineage coalescence-time lineage-pair))
-       
-                              
+(progn (defparameter *previously-coalesced* nil)
+       (defparameter *tree-builder* nil)
+       (loop for edge in *sorted-edges*
+             do (progn
+                  (format t "~%~%EDGE: ~a" edge)
+                  (make-node-from-edge 1 edge))))
+
+(defun already-coalesced-p (r s)
+  "Return t if both lineages have already coalesced at a more recent time, which
+can be determined by the size of the lists r and s."
+  (and (= (length s) 1)
+       (= (length r) 0)))
+
+(progn (defparameter *previously-coalesced* nil)
+       (defparameter *tree-builder* nil)
+       (make-node-from-edge 500 (nth 3 *sorted-edges*))
+       (print *previously-coalesced*))
+
+(defun make-node-from-edge (site edge)
+  "Analyzes a single edges -- using *previously-coalesced*, determine which lineages have coalesced (wrt a specific site). Update *previously-coalesced* accordingly. And then (not yet implemented) add the corresponding tree node to *tree-builder*."
+  (let* ((all-descendants-of-lineage (find-descendants site edge))
+         (sr (loop for x in *previously-coalesced*
+                with r = all-descendants-of-lineage ;; r = list of remaining lineages
+                until (<= (length r) 1)
+                when (sort (copy-list (intersection x r)) #'<)
+                collect it into s  ;; s = list of coalescing nodes (may have 0, 1 or 2 elements)
+                and do (setf r (set-difference r (intersection r x)))
+                finally (return (list s r))))
+         (s (first sr))
+         (r (second sr)))
+    (progn (format t "~%sr: ~a~%s: ~a~%r: ~a" sr s r)
+           (unless (already-coalesced-p r s)
+             (let* ((new-label-to-add (sort (copy-list (union (union (first s) (second s)) r)) #'<)))
+               (cond
+                 ;; Case 1: both lineages are leaves (base case)
+                 ((and (= (length s) 0) (= (length r) 2))
+                  (progn
+                    (setf *previously-coalesced* (cons new-label-to-add *previously-coalesced*))
+                    (format t "~%Both coalescing lineages are leaves.~%New label: ~a" new-label-to-add)
+                    ;; Update the tree by adding the node to the alist
+                    (setf *tree-builder* (cons
+                                          (list new-label-to-add ;this will be the key to the node in the alist
+                                                (make-node :population-name new-label-to-add
+                                                           :population-start-time (car edge)
+                                                           :left-subtree (make-leaf :population-name (first r)
+                                                                                    :population-end-time (car edge))
+                                                           :right-subtree (make-leaf :population-name (second r)
+                                                                                     :population-end-time (car edge))))
+                                          *tree-builder*))
+                    (format t "~%Updated tree-builder: ~a" *tree-builder*)))
+                 ;; Case 2: one coalescing lineage is a node and the other is a leaf
+                 ((and (= (length s) 1) (= (length r) 1))
+                  (progn
+                    (setf *previously-coalesced* (cons new-label-to-add *previously-coalesced*))
+                    (format t "~%One coalescing lineage is a leaf; the other is a node.~%New label: ~a~%Label to get node is: ~a"
+                            new-label-to-add (first s))
+                    (setf *tree-builder* (cons
+                                          (list
+                                           new-label-to-add
+                                           (make-node :population-name new-label-to-add
+                                                      :population-start-time (car edge)
+                                                      :left-subtree (make-leaf :population-name (car r)
+                                                                               :population-end-time (car edge))
+                                                      :right-subtree (second (assoc (first s) *tree-builder* :test #'equal))))
+                                          *tree-builder*))))
+                 ;; Case 3: both coalescing lineages are nodes
+                 ((= (length s) 2)
+                  (progn
+                    (setf *previously-coalesced* (cons new-label-to-add *previously-coalesced*))
+                    (format t "~%Both coalescing lineages are nodes.~%New label: ~a~%Labels to get nodes are: ~a ~%~a"
+                            new-label-to-add (first s) (second s))
+                    (setf *tree-builder* (cons
+                                          (list
+                                           new-label-to-add
+                                           (make-node :population-name new-label-to-add
+                                                      :population-start-time (car edge)
+                                                      :left-subtree (second (assoc (first s) *tree-builder* :test #'equal))
+                                                      :right-subtree (second (assoc (second s) *tree-builder* :test #'equal))))
+                                          *tree-builder*))))
+		 (t (format t "something unexpected happened"))))))))
+                                   
+
+(defun add-times (tree x)
+  (cond ((rootp tree)
+         (set-population-parameter :dist-from-parent 0 tree))
+        ((leafp tree)
+         (set-population-parameter :dist-from-parent x tree))
+        ((nodep tree)
+         (progn (set-population-parameter :dist-from-parent x tree)
+                (add-times (left-subtree (get-parameter :populationtree 
+                
+         
+      
+
+
+((:POPULATION-NAME (1 2 3 4) :DIST-FROM-PARENT NIL :MUTATION-RATE 1
+  :RECOMB-RATE 0 :PARENT-LABEL nil :POPULATION-START-TIME
+                   5.788608309440108d0 :POPULATION-END-TIME NIL :NUMERIC-LABEL NIL)
+ ((:POPULATION-NAME 3 :DIST-FROM-PARENT NIL :MUTATION-RATE 1 :RECOMB-RATE 0
+   :PARENT-LABEL "parent" :POPULATION-START-TIME NIL :POPULATION-END-TIME
+                    5.788608309440108d0 :NUMERIC-LABEL NIL))
+ ((:POPULATION-NAME (1 2 4) :DIST-FROM-PARENT NIL :MUTATION-RATE 1 :RECOMB-RATE
+                    0 :PARENT-LABEL "parent" :POPULATION-START-TIME 4.266150707283983d0
+   :POPULATION-END-TIME NIL :NUMERIC-LABEL NIL)
+  ((:POPULATION-NAME 4 :DIST-FROM-PARENT NIL :MUTATION-RATE 1 :RECOMB-RATE 0
+    :PARENT-LABEL "parent" :POPULATION-START-TIME NIL :POPULATION-END-TIME
+                     4.266150707283983d0 :NUMERIC-LABEL NIL))
+  ((:POPULATION-NAME (1 2) :DIST-FROM-PARENT NIL :MUTATION-RATE 1 :RECOMB-RATE
+                     0 :PARENT-LABEL "parent" :POPULATION-START-TIME 1.9481898222457033d0
+    :POPULATION-END-TIME NIL :NUMERIC-LABEL NIL)
+   ((:POPULATION-NAME 1 :DIST-FROM-PARENT NIL :MUTATION-RATE 1 :RECOMB-RATE 0
+     :PARENT-LABEL "parent" :POPULATION-START-TIME NIL :POPULATION-END-TIME
+                      1.9481898222457033d0 :NUMERIC-LABEL NIL))
+   ((:POPULATION-NAME 2 :DIST-FROM-PARENT NIL :MUTATION-RATE 1 :RECOMB-RATE 0
+     :PARENT-LABEL "parent" :POPULATION-START-TIME NIL :POPULATION-END-TIME
+                      1.9481898222457033d0 :NUMERIC-LABEL NIL)))))
+
+;; ;; ;; Old program
+
+;; (defun make-node-from-edge (site edge)
+;;   "Analyzes a single edges -- using *previously-coalesced*, determine which lineages have coalesced (wrt a specific site). Update *previously-coalesced* accordingly. And then (not yet implemented) add the corresponding tree node to *tree-builder*."
+;;   (let* ((all-descendants-of-lineage (find-descendants site edge))
+;;          (coalescence-time (first edge))
+;;          (lineage-pair
+;;            (loop for x in *previously-coalesced*
+;;                  with r = all-descendants-of-lineage ; r = remaining lineages
+;;                  until (<= (length r) 1)
+;;                  when (sort (intersection x r) #'<)
+;;                    collect it into lineage-pair
+;;                    and do (setf r (set-difference r (intersection r x)))
+;;                  finally
+;;                     (return (cond
+;;                               ;; Case 1: both coalescing lineages are nodes
+;;                               ((= (length lineage-pair) 2)
+;;                                (progn
+;;                                  (format t "~%Case 1.~%lineage-pair: ~a" lineage-pair)
+;;                                  (setf *previously-coalesced*
+;;                                        (cons
+;;                                         (sort (copy-list
+;;                                                (union (first lineage-pair)
+;;                                                       (second lineage-pair)))
+;;                                               #'<)
+;;                                         *previously-coalesced*))
+;;                                  lineage-pair))
+;;                               ;; Case 2: one lineage is a node and the other is a leaf
+;;                               ((and (= (length lineage-pair) 1) (= (length r) 1))
+;;                                (progn
+;;                                  (format t "~%Case 2.~%lineage-pair: ~a~%Leaf: ~a~%Node: ~a"
+;;                                          lineage-pair r (first lineage-pair))
+;;                                  (setf *previously-coalesced*
+;;                                        (cons
+;;                                         (sort (copy-list
+;;                                                (union r (first lineage-pair)))
+;;                                               #'<)
+;;                                         *previously-coalesced*))
+;;                                  (list (first lineage-pair) r)))
+;;                               ;; Case 3: both lineages have already coalesced at
+;;                               ;; a more recent time, so ignore this edge.
+;;                               ((and (= (length lineage-pair) 1) (= (length r) 0)) nil)
+;;                               ;; Case 4: both lineages are leaves
+;;                               ((and (= (length lineage-pair) 0) (= (length r) 2))
+;;                                (progn
+;;                                  (format t "~%Case 4.~%lineage-pair: ~a" lineage-pair)
+;;                                  (setf *previously-coalesced*
+;;                                        (cons r *previously-coalesced*))
+;;                                  r)))))))
+;;     (format t "~%coalescing pair is: ~a" lineage-pair)
+;;     (format t "~%all descendants are: ~a" all-descendants-of-lineage)
+;;     ;;(format t "~%coalescence-time is: ~a" coalescence-time)
+;;     (format t "~%updated *previously-coalesced*: ~a" *previously-coalesced*)))
+
+
+;; ;; ;; Example
+;; (defparameter test-node (make-node :population-name '(1 4) 
+;;                                     :population-start-time 1.2
+;;                                     :left-subtree (make-leaf :population-name 2
+;;                                                              :population-end-time 1.2)
+;;                                     :right-subtree (make-leaf :population-name 3
+;;                                                               :population-end-time 1.2)))
+;; (defparameter test-node2 (make-node :population-name '(2 3) 
+;;                                     :population-start-time 2.2
+;;                                     :left-subtree (make-leaf :population-name 2
+;;                                                              :population-end-time 2.2)
+;;                                     :right-subtree (make-leaf :population-name 3
+;;                                                               :population-end-time 2.2)))
+
+;; (defparameter *tree-builder* (acons '(1 4) (list test-node) nil))
+;; (setf *tree-builder* (acons '(2 3) (list test-node2) *tree-builder*))
+
+;; *tree-builder*
+;; (((2 3)
+;;   ((:POPULATION-NAME (2 3) :DIST-FROM-PARENT NIL :MUTATION-RATE 1 :RECOMB-RATE
+;;     0 :PARENT-LABEL "parent" :POPULATION-START-TIME 2.2 :POPULATION-END-TIME
+;;     NIL :NUMERIC-LABEL NIL)
+;;    ((:POPULATION-NAME 2 :DIST-FROM-PARENT NIL :MUTATION-RATE 1 :RECOMB-RATE 0
+;;      :PARENT-LABEL "parent" :POPULATION-START-TIME NIL :POPULATION-END-TIME 2.2
+;;      :NUMERIC-LABEL NIL))
+;;    ((:POPULATION-NAME 3 :DIST-FROM-PARENT NIL :MUTATION-RATE 1 :RECOMB-RATE 0
+;;      :PARENT-LABEL "parent" :POPULATION-START-TIME NIL :POPULATION-END-TIME 2.2
+;;      :NUMERIC-LABEL NIL))))
+;;  ((1 4)
+;;   ((:POPULATION-NAME (1 4) :DIST-FROM-PARENT NIL :MUTATION-RATE 1 :RECOMB-RATE
+;;     0 :PARENT-LABEL "parent" :POPULATION-START-TIME 1.2 :POPULATION-END-TIME
+;;     NIL :NUMERIC-LABEL NIL)
+;;    ((:POPULATION-NAME 1 :DIST-FROM-PARENT NIL :MUTATION-RATE 1 :RECOMB-RATE 0
+;;      :PARENT-LABEL "parent" :POPULATION-START-TIME NIL :POPULATION-END-TIME 1.2
+;;      :NUMERIC-LABEL NIL))
+;;    ((:POPULATION-NAME 4 :DIST-FROM-PARENT NIL :MUTATION-RATE 1 :RECOMB-RATE 0
+;;      :PARENT-LABEL "parent" :POPULATION-START-TIME NIL :POPULATION-END-TIME 1.2
+;;      :NUMERIC-LABEL NIL)))))
+
+;; (assoc '(1 4) *tree-builder* :test #'equal)
+;; (assoc '(2 3) *tree-builder* :test #'equal)
+;; (nodep (second (assoc '(1 4) *tree-builder* :test #'equal)))
+
+
+
+;; ;; Example
+;; *list-of-breakpoints* = (402 335 766 754 973 186)
+
+;; (mscr t* 1000)
+;; (((4.306453153051099d0 ((1 . 1000)) ((1 . 1000)) ((1 . 1000)) ((1 . 1000))))
+;;  ((4.306453153051099d0 ((1 . 1000)) ((1 . 1000)) ((1 . 1000)) ((1 . 1000)))
+;;   (2.854556611726914d0 ((186 . 1000)) NIL NIL NIL)
+;;   (3.003349457914102d0 ((335 . 1000)) NIL ((1 . 1000)) NIL)
+;;   (3.0590606609388025d0 ((186 . 334)) ((754 . 1000)) NIL NIL)
+;;   (3.2285537794507313d0 ((186 . 1000)) ((754 . 1000)) ((1 . 1000)) NIL)
+;;   (3.362515819129609d0 ((186 . 1000)) ((1 . 1000)) ((1 . 1000)) NIL)
+;;   (3.4149221114926416d0 ((1 . 185)) NIL NIL NIL)
+;;   (3.715127784448965d0 ((1 . 1000)) ((1 . 1000)) ((1 . 1000)) NIL)))
+
+;; (defparameter *sorted-edges*
+;;   (process-mscr-output
+;;    '(((4.306453153051099d0 ((1 . 1000)) ((1 . 1000)) ((1 . 1000)) ((1 . 1000))))
+;;      ((4.306453153051099d0 ((1 . 1000)) ((1 . 1000)) ((1 . 1000)) ((1 . 1000)))
+;;       (2.854556611726914d0 ((186 . 1000)) NIL NIL NIL)
+;;       (3.003349457914102d0 ((335 . 1000)) NIL ((1 . 1000)) NIL)
+;;       (3.0590606609388025d0 ((186 . 334)) ((754 . 1000)) NIL NIL)
+;;       (3.2285537794507313d0 ((186 . 1000)) ((754 . 1000)) ((1 . 1000)) NIL)
+;;       (3.362515819129609d0 ((186 . 1000)) ((1 . 1000)) ((1 . 1000)) NIL)
+;;       (3.4149221114926416d0 ((1 . 185)) NIL NIL NIL)
+;;       (3.715127784448965d0 ((1 . 1000)) ((1 . 1000)) ((1 . 1000)) NIL)))))
+
+;; ((2.854556611726914d0 ((186 . 1000)) NIL NIL NIL)
+;;  (3.003349457914102d0 ((335 . 1000)) NIL ((1 . 1000)) NIL)
+;;  (3.0590606609388025d0 ((186 . 334)) ((754 . 1000)) NIL NIL)
+;;  (3.2285537794507313d0 ((186 . 1000)) ((754 . 1000)) ((1 . 1000)) NIL)
+;;  (3.362515819129609d0 ((186 . 1000)) ((1 . 1000)) ((1 . 1000)) NIL)
+;;  (3.4149221114926416d0 ((1 . 185)) NIL NIL NIL)
+;;  (3.715127784448965d0 ((1 . 1000)) ((1 . 1000)) ((1 . 1000)) NIL)
+;;  (4.306453153051099d0 ((1 . 1000)) ((1 . 1000)) ((1 . 1000)) ((1 . 1000))))
+
+;; (progn (defparameter *previously-coalesced* nil)
+;;        (loop for edge in *sorted-edges*
+;;              do (progn
+;;                   (format t "~%~%EDGE: ~a" edge)
+;;                   (make-node-from-edge 401 edge))))
+
+
+;; EDGE: (2.854556611726914d0 ((186 . 1000)) NIL NIL NIL)
+;; coalescing pair is: NIL
+;; all descendants are: (1)
+;; updated *previously-coalesced*: NIL
+
+;; EDGE: (3.003349457914102d0 ((335 . 1000)) NIL ((1 . 1000)) NIL)
+;; Case 4.
+;; lineage-pair: NIL
+;; coalescing pair is: (1 3)
+;; all descendants are: (1 3)
+;; updated *previously-coalesced*: ((1 3))
+
+;; EDGE: (3.0590606609388025d0 ((186 . 334)) ((754 . 1000)) NIL NIL)
+;; coalescing pair is: NIL
+;; all descendants are: NIL
+;; updated *previously-coalesced*: ((1 3))
+
+;; EDGE: (3.2285537794507313d0 ((186 . 1000)) ((754 . 1000)) ((1 . 1000)) NIL)
+;; coalescing pair is: NIL
+;; all descendants are: (1 3)
+;; updated *previously-coalesced*: ((1 3))
+
+;; EDGE: (3.362515819129609d0 ((186 . 1000)) ((1 . 1000)) ((1 . 1000)) NIL)
+;; Case 2.
+;; lineage-pair: ((1 3))
+;; Leaf: (2)
+;; Node: (1 3)
+;; coalescing pair is: ((1 3) (2))
+;; all descendants are: (1 2 3)
+;; updated *previously-coalesced*: ((1 2 3) (1 3))
+
+;; EDGE: (3.4149221114926416d0 ((1 . 185)) NIL NIL NIL)
+;; coalescing pair is: NIL
+;; all descendants are: NIL
+;; updated *previously-coalesced*: ((1 2 3) (1 3))
+
+;; EDGE: (3.715127784448965d0 ((1 . 1000)) ((1 . 1000)) ((1 . 1000)) NIL)
+;; coalescing pair is: NIL
+;; all descendants are: (1 2 3)
+;; updated *previously-coalesced*: ((1 2 3) (1 3))
+
+;; EDGE: (4.306453153051099d0 ((1 . 1000)) ((1 . 1000)) ((1 . 1000)) ((1 . 1000)))
+;; Case 2.
+;; lineage-pair: ((1 2 3))
+;; Leaf: (4)
+;; Node: (1 2 3)
+;; coalescing pair is: ((1 2 3) (4))
+;; all descendants are: (1 2 3 4)
+;; updated *previously-coalesced*: ((1 2 3 4) (1 2 3) (1 3))
+
+
+
+
+
+
+
+
+
   (cond ((endp lineage-pair) ; two leaves are coalescing
          (setf *tree-builder*
                (acons all-descendants-of-lineage
