@@ -1112,10 +1112,12 @@ Remove copy-list to make it destructive (but faster)."
 
 
 
-(defvar *leaf-start-times-alist* nil)
+(defvar *leaf-start-times-alist*)
+(defvar *msa*)
 (defun mscr-jc (species-tree sequence-length)
   "run the mscr-jc process once"
-  (progn 
+  (progn
+    (defparameter *msa* (make-array (list (count-number-of-leaves species-tree) sequence-length)))
     (defparameter *list-of-breakpoints* nil)
     (defparameter *leaf-start-times-alist* (make-leaf-start-times-alist species-tree))
     (let* ((output-edges (mscr species-tree sequence-length)) ; side effects: creates *list-of-breakpoints*
@@ -1134,13 +1136,20 @@ Remove copy-list to make it destructive (but faster)."
                    (let ((marginal-tree (make-marginal-gene-tree sorted-edges i)))
                                         ; the above resets *previously-coalesced*, *tree-builder*, and *cit*
                      (loop for site from i upto (1- j)
-                           collecting (implement-jukes-cantor-process marginal-tree) into msa-columns
-                           finally (return (format t "~%Nucleotide patterns generated for sites x∈[~a,~a]: ~%~a" i (1- j)
-                                                   msa-columns)))))))))
+                           do (update-msa (implement-jukes-cantor-process marginal-tree)
+                                          (1- site)))))))))
       
     
          
 
+(defun update-msa (msa-column site)
+  "input: a list of 'columns' of the form (((4 0) (3 1) (1 3) (2 1)) ((4 2) (3
+3) (1 3) (2 3)) ...). Updates the global variable *msa*"
+  (loop for pair in msa-column
+        do (progn
+             (when *mscr-verbose-mode* (format t "~%assigning (~a,~a) the value ~a" (car pair) (1+ site) (cadr pair)))
+             (setf (aref *msa* (1- (car pair)) site) (cadr pair)))))
+           
 
 (defun make-marginal-gene-tree (sorted-edges site)
   (progn
@@ -1160,7 +1169,7 @@ Remove copy-list to make it destructive (but faster)."
                               (get-parameter :population-start-time *cit*) *cit*) 
     ;; Add some time parameters to the tree
     (add-times *cit*)
-    (format t "~%~%Marginal gene tree for site ~a constructed:~%~a" site *cit*)
+    (when *mscr-verbose-mode* (format t "~%~%Marginal gene tree for site ~a constructed:~%~a" site *cit*))
     *cit*))
     
 
@@ -1187,3 +1196,13 @@ by make-node-from-edge"
       (add-times (right-subtree tree) population-start-time))))
          
  
+
+
+(with-open-file (stream (merge-pathnames #p"data.txt"
+                                         (user-homedir-pathname))
+                        :direction :output    ;; Write to disk
+                        :if-exists :supersede ;; Overwrite the file
+                        :if-does-not-exist :create)
+  (dotimes (i 100)
+    ;; Write random numbers to the file
+    (format stream "~3,3f~%" (random 100))))
