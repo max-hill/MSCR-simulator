@@ -1,0 +1,398 @@
+* Preliminary notes
+In this document, we record experiments performed with the generalized simulator
+on trees with four leaves. This simulator is significantly faster than the
+original simulator and scales better with sequence length k. Note that A,B,C,D
+equal 1,2,3,4 respectively. On unbalanced trees, the more recent internal branch
+has length *f₁* and the other internal branch has length *f₂*. On balanced
+trees, the internal branch ancestral to populations A and B has length *f₁*
+whereas *f₂* denotes the length of the other internal branch.
+
+Consistent with results from the the three-taxa simulations, we find that the
+effect disappears for edges of length greater than 1/10 of a coalescent unit. 
+* Experiment 1 - Unbalanced Quartet Tree
+
+Unbalanced tree with negligible f₁ and topology (((A,B),C),D). High recombination in
+A and B. The true quartet is least likely to be inferred.
+
+** Input
+#+BEGIN_SRC common-lisp
+(defparameter *mutation-rate* 0.1)
+(defparameter *f₁* 0.01)
+(defparameter *f₂* 1)
+(defparameter *unbalanced-tree-experiment-1* (augment-tree-parameters
+                  (make-node :population-name "ABCD"
+                             :dist-from-parent 999
+                             :recomb-rate 0
+                             :left-subtree (make-node
+                                            :population-name "ABC"
+                                            :dist-from-parent *f₂*
+                                            :recomb-rate 0
+                                            :left-subtree (make-node
+                                                           :population-name "AB"
+                                                           :dist-from-parent *f₁*
+                                                           :recomb-rate 0
+                                                           :left-subtree (make-leaf
+                                                                          :population-name "A"
+                                                                          :dist-from-parent 1
+                                                                          :recomb-rate 10)
+                                                           :right-subtree (make-leaf
+                                                                           :population-name "B"
+                                                                           :dist-from-parent 1
+                                                                           :recomb-rate 10))
+                                            :right-subtree (make-leaf
+                                                            :population-name "C"
+                                                            :dist-from-parent (+ 1 *f₁*)
+                                                            :recomb-rate 0))
+                             :right-subtree (make-leaf
+                                             :population-name "D"
+                                             :dist-from-parent (+ 1 *f₁* *f₂*)
+                                             :recomb-rate 0))))
+
+(time (test-quartet-tree t* 1000 100000))
+(time (test-quartet-tree t* 500 100000))
+#+END_SRC
+
+** Results
+*** High recombination (=10) in A,B: (time (test-quartet-tree *unbalanced-tree-experiment-1* 1000 100000))
+#+BEGIN_SRC
+Quartet 12-34 inferred in 31407 out of 100000 samples
+Quartet 13-24 inferred in 33838 out of 100000 samples
+Quartet 14-23 inferred in 33958 out of 100000 samples
+Quartet could not be determined in 797 samples
+Mutation-rate: 0.1
+Internal branch lengths: f₁ = 0.01, and f₂ = 1
+Evaluation took:
+  148.482 seconds of real time
+  149.167038 seconds of total run time (148.111145 user, 1.055893 system)
+  [ Run times consist of 4.908 seconds GC time, and 144.260 seconds non-GC time. ]
+  100.46% CPU
+  431,198,156,466 processor cycles
+  133,192,657,216 bytes consed
+#+END_SRC
+k=1000
+
+*** High recombination (=10) in A,B: (time (test-quartet-tree *unbalanced-tree-experiment-1* 500 100000))
+#+BEGIN_SRC
+Quartet 12-34 inferred in 31119 out of 100000 samples
+Quartet 13-24 inferred in 33632 out of 100000 samples
+Quartet 14-23 inferred in 33645 out of 100000 samples
+Quartet could not be determined in 1604 samples
+Mutation-rate: 0.1
+Internal branch lengths: f₁ = 0.01, and f₂ = 1
+Evaluation took:
+  84.337 seconds of real time
+  84.792593 seconds of total run time (84.366500 user, 0.426093 system)
+  [ Run times consist of 2.899 seconds GC time, and 81.894 seconds non-GC time. ]
+  100.54% CPU
+  244,920,076,250 processor cycles
+  78,349,088,080 bytes consed
+#+END_SRC
+k=500
+
+
+and again one more time for good measure
+ 
+#+BEGIN_SRC
+Quartet 12-34 inferred in 31381 out of 100000 samples
+Quartet 13-24 inferred in 33612 out of 100000 samples
+Quartet 14-23 inferred in 33385 out of 100000 samples
+Quartet could not be determined in 1622 samples
+Mutation-rate: 0.1
+Internal branch lengths: f₁ = 0.01, and f₂ = 1
+Evaluation took:
+  82.366 seconds of real time
+  82.755171 seconds of total run time (82.225948 user, 0.529223 system)
+  [ Run times consist of 2.864 seconds GC time, and 79.892 seconds non-GC time. ]
+  100.47% CPU
+  239,195,454,569 processor cycles
+  78,292,094,960 bytes consed
+#+END_SRC  
+k=500
+
+*** No recombination case
+For a control case, the simulation was performed with recombination rates set to
+zero in all populations of the tree and with sequence length 500. The results
+were as expected.
+#+BEGIN_SRC
+Quartet 12-34 inferred in 33762 out of 100000 samples
+Quartet 13-24 inferred in 32510 out of 100000 samples
+Quartet 14-23 inferred in 32565 out of 100000 samples
+Quartet could not be determined in 1163 samples
+Mutation-rate: 0.1
+Internal branch lengths: f₁ = 0.01, and f₂ = 1
+Evaluation took:
+  62.686 seconds of real time
+  62.978956 seconds of total run time (62.581869 user, 0.397087 system)
+  [ Run times consist of 2.013 seconds GC time, and 60.966 seconds non-GC time. ]
+  100.47% CPU
+  182,044,238,791 processor cycles
+  55,153,118,528 bytes consed
+#+END_SRC
+k=500
+
+*** No recombination case: Increasing *f₁* from 0.01 to 0.1. 
+
+#+BEGIN_SRC
+Quartet 12-34 inferred in 38716 out of 100000 samples
+Quartet 13-24 inferred in 29977 out of 100000 samples
+Quartet 14-23 inferred in 30150 out of 100000 samples
+Quartet could not be determined in 1157 samples
+Mutation-rate: 0.1
+Internal branch lengths: f₁ = 0.1, and f₂ = 1
+Evaluation took:
+  62.745 seconds of real time
+  63.031332 seconds of total run time (62.590623 user, 0.440709 system)
+  [ Run times consist of 2.030 seconds GC time, and 61.002 seconds non-GC time. ]
+  100.46% CPU
+  182,214,089,710 processor cycles
+  55,152,020,688 bytes consed
+#+END_SRC
+k=500
+
+*** High recombination in A,B, *f₁*=0.1
+The results here are essentially the same as the previous case, in which there
+is no recombination. This is consistent with previous three-taxa simulations in
+which we found the effects disappear when internal branches have length at least
+~0.1 coalescent units.
+
+#+BEGIN_SRC
+Quartet 12-34 inferred in 38009 out of 100000 samples
+Quartet 13-24 inferred in 30337 out of 100000 samples
+Quartet 14-23 inferred in 30096 out of 100000 samples
+Quartet could not be determined in 1558 samples
+Mutation-rate: 0.1
+Internal branch lengths: f₁ = 0.1, and f₂ = 1
+Evaluation took:
+  83.751 seconds of real time
+  84.169371 seconds of total run time (83.695827 user, 0.473544 system)
+  [ Run times consist of 2.924 seconds GC time, and 81.246 seconds non-GC time. ]
+  100.50% CPU
+  243,216,196,913 processor cycles
+  78,173,129,472 bytes consed
+#+END_SRC
+k=500
+
+*** High recombination in A,B, *f₁*=0.05
+The true topology remains the most likely to be inferred even with ths shortened
+branch length.
+#+BEGIN_SRC
+Quartet 12-34 inferred in 34278 out of 100000 samples
+Quartet 13-24 inferred in 32039 out of 100000 samples
+Quartet 14-23 inferred in 32068 out of 100000 samples
+Quartet could not be determined in 1615 samples
+Mutation-rate: 0.1
+Internal branch lengths: f₁ = 0.05, and f₂ = 1
+Sequence length: k = 500
+Species Tree: ((POPULATION-NAME ABCD DIST-FROM-PARENT 999 RECOMB-RATE 0
+                POPULATION-START-TIME 2.0499878 POPULATION-END-TIME 1001.05
+                PARENT-LABEL NIL NUMERIC-LABEL (((1 2) 3) 4) MUTATION-RATE 0.1)
+               ((POPULATION-NAME ABC DIST-FROM-PARENT 1 RECOMB-RATE 0
+                 POPULATION-START-TIME 1.0499878 POPULATION-END-TIME 2.0499878
+                 PARENT-LABEL ABCD NUMERIC-LABEL ((1 2) 3) MUTATION-RATE 0.1)
+                ((POPULATION-NAME AB DIST-FROM-PARENT 0.05 RECOMB-RATE 0
+                  POPULATION-START-TIME 0.9999878 POPULATION-END-TIME 1.0499878
+                  PARENT-LABEL ABC NUMERIC-LABEL (1 2) MUTATION-RATE 0.1)
+                 ((POPULATION-NAME A DIST-FROM-PARENT 1 RECOMB-RATE 10
+                   POPULATION-START-TIME -1.2218952e-5 POPULATION-END-TIME
+                   0.9999878 PARENT-LABEL AB NUMERIC-LABEL 1 MUTATION-RATE
+                   0.1))
+                 ((POPULATION-NAME B DIST-FROM-PARENT 1 RECOMB-RATE 10
+                   POPULATION-START-TIME -1.2218952e-5 POPULATION-END-TIME
+                   0.9999878 PARENT-LABEL AB NUMERIC-LABEL 2 MUTATION-RATE
+                   0.1)))
+                ((POPULATION-NAME C DIST-FROM-PARENT 1.05 RECOMB-RATE 0
+                  POPULATION-START-TIME -1.21593475e-5 POPULATION-END-TIME
+                  1.0499878 PARENT-LABEL ABC NUMERIC-LABEL 3 MUTATION-RATE
+                  0.1)))
+               ((POPULATION-NAME D DIST-FROM-PARENT 2.05 RECOMB-RATE 0
+                 POPULATION-START-TIME -1.21593475e-5 POPULATION-END-TIME
+                 2.0499878 PARENT-LABEL ABCD NUMERIC-LABEL 4 MUTATION-RATE
+                 0.1)))
+Evaluation took:
+  82.997 seconds of real time
+  83.455777 seconds of total run time (82.941848 user, 0.513929 system)
+  [ Run times consist of 2.931 seconds GC time, and 80.525 seconds non-GC time. ]
+  100.55% CPU
+  241,025,194,627 processor cycles
+  78,341,057,584 bytes consed
+#+END_SRC
+
+*** High recombination in A,B, *f₁*=0.02
+We've hit a cutoff - now the true topology is less likely to be inferred than
+either of the other two.
+
+#+BEGIN_SRC
+Quartet 12-34 inferred in 31982 out of 100000 samples
+Quartet 13-24 inferred in 33366 out of 100000 samples
+Quartet 14-23 inferred in 33033 out of 100000 samples
+Quartet could not be determined in 1619 samples
+Mutation-rate: 0.1
+Internal branch lengths: f₁ = 0.02, and f₂ = 1
+Sequence length: k = 500
+Species Tree: ((POPULATION-NAME ABCD DIST-FROM-PARENT 999 RECOMB-RATE 0
+                POPULATION-START-TIME 2.0200195 POPULATION-END-TIME 1001.02
+                PARENT-LABEL NIL NUMERIC-LABEL (((1 2) 3) 4) MUTATION-RATE 0.1)
+               ((POPULATION-NAME ABC DIST-FROM-PARENT 1 RECOMB-RATE 0
+                 POPULATION-START-TIME 1.0200195 POPULATION-END-TIME 2.0200195
+                 PARENT-LABEL ABCD NUMERIC-LABEL ((1 2) 3) MUTATION-RATE 0.1)
+                ((POPULATION-NAME AB DIST-FROM-PARENT 0.02 RECOMB-RATE 0
+                  POPULATION-START-TIME 1.0000196 POPULATION-END-TIME 1.0200195
+                  PARENT-LABEL ABC NUMERIC-LABEL (1 2) MUTATION-RATE 0.1)
+                 ((POPULATION-NAME A DIST-FROM-PARENT 1 RECOMB-RATE 10
+                   POPULATION-START-TIME 1.9550323e-5 POPULATION-END-TIME
+                   1.0000196 PARENT-LABEL AB NUMERIC-LABEL 1 MUTATION-RATE
+                   0.1))
+                 ((POPULATION-NAME B DIST-FROM-PARENT 1 RECOMB-RATE 10
+                   POPULATION-START-TIME 1.9550323e-5 POPULATION-END-TIME
+                   1.0000196 PARENT-LABEL AB NUMERIC-LABEL 2 MUTATION-RATE
+                   0.1)))
+                ((POPULATION-NAME C DIST-FROM-PARENT 1.02 RECOMB-RATE 0
+                  POPULATION-START-TIME 1.9550323e-5 POPULATION-END-TIME
+                  1.0200195 PARENT-LABEL ABC NUMERIC-LABEL 3 MUTATION-RATE
+                  0.1)))
+               ((POPULATION-NAME D DIST-FROM-PARENT 2.02 RECOMB-RATE 0
+                 POPULATION-START-TIME 1.9550323e-5 POPULATION-END-TIME
+                 2.0200195 PARENT-LABEL ABCD NUMERIC-LABEL 4 MUTATION-RATE
+                 0.1)))
+Evaluation took:
+  83.512 seconds of real time
+  83.911882 seconds of total run time (83.454225 user, 0.457657 system)
+  [ Run times consist of 2.955 seconds GC time, and 80.957 seconds non-GC time. ]
+  100.48% CPU
+  242,522,634,148 processor cycles
+  78,265,156,080 bytes consed
+#+END_SRC
+  
+*** Recomb rate in A = 10, everywhere else = 0, *f₁*=0.02
+Here we looked at what happens if we reduce recombination rate in B to zero. The
+result was that 14-23 got more likely and 13-24 got less likely.
+
+#+BEGIN_SRC
+Quartet 12-34 inferred in 32430 out of 100000 samples
+Quartet 13-24 inferred in 30258 out of 100000 samples
+Quartet 14-23 inferred in 35995 out of 100000 samples
+Quartet could not be determined in 1317 samples
+Mutation-rate: 0.1
+Internal branch lengths: f₁ = 0.02, and f₂ = 1
+Sequence length: k = 500
+Species Tree: ((POPULATION-NAME ABCD DIST-FROM-PARENT 999 RECOMB-RATE 0
+                POPULATION-START-TIME 2.0200195 POPULATION-END-TIME 1001.02
+                PARENT-LABEL NIL NUMERIC-LABEL (((1 2) 3) 4) MUTATION-RATE 0.1)
+               ((POPULATION-NAME ABC DIST-FROM-PARENT 1 RECOMB-RATE 0
+                 POPULATION-START-TIME 1.0200195 POPULATION-END-TIME 2.0200195
+                 PARENT-LABEL ABCD NUMERIC-LABEL ((1 2) 3) MUTATION-RATE 0.1)
+                ((POPULATION-NAME AB DIST-FROM-PARENT 0.02 RECOMB-RATE 0
+                  POPULATION-START-TIME 1.0000196 POPULATION-END-TIME 1.0200195
+                  PARENT-LABEL ABC NUMERIC-LABEL (1 2) MUTATION-RATE 0.1)
+                 ((POPULATION-NAME A DIST-FROM-PARENT 1 RECOMB-RATE 10
+                   POPULATION-START-TIME 1.9550323e-5 POPULATION-END-TIME
+                   1.0000196 PARENT-LABEL AB NUMERIC-LABEL 1 MUTATION-RATE
+                   0.1))
+                 ((POPULATION-NAME B DIST-FROM-PARENT 1 RECOMB-RATE 0
+                   POPULATION-START-TIME 1.9550323e-5 POPULATION-END-TIME
+                   1.0000196 PARENT-LABEL AB NUMERIC-LABEL 2 MUTATION-RATE
+                   0.1)))
+                ((POPULATION-NAME C DIST-FROM-PARENT 1.02 RECOMB-RATE 0
+                  POPULATION-START-TIME 1.9550323e-5 POPULATION-END-TIME
+                  1.0200195 PARENT-LABEL ABC NUMERIC-LABEL 3 MUTATION-RATE
+                  0.1)))
+               ((POPULATION-NAME D DIST-FROM-PARENT 2.02 RECOMB-RATE 0
+                 POPULATION-START-TIME 1.9550323e-5 POPULATION-END-TIME
+                 2.0200195 PARENT-LABEL ABCD NUMERIC-LABEL 4 MUTATION-RATE
+                 0.1)))
+Evaluation took:
+  71.170 seconds of real time
+  71.500265 seconds of total run time (70.975116 user, 0.525149 system)
+  [ Run times consist of 2.442 seconds GC time, and 69.059 seconds non-GC time. ]
+  100.46% CPU
+  206,679,922,715 processor cycles
+  65,481,079,392 bytes consed
+#+END_SRC
+
+* Quartet Simulation 1
+Here we assume high recombination rates in A and B and zero elsewhere. The
+species tree is assumed unbalanced. The internal branch length is small. 
+
+#+BEGIN_SRC common-lisp
+
+
+;; Initialize global parameters and output file
+(defparameter *mutation-rate* 0.1)
+(defvar *f₁*) ; length of most recent internal branch
+(defparameter *f₂* 1) ; internal branch
+(defparameter *k* 500) ; sequence length
+(defparameter *m* 100) ; number of samples
+(defvar *ρ*) ; recombination rate in A and B (everywhere else is zero)
+(defparameter *i* 0) ; variable to track simulation progress
+
+(defparameter *output-filename* "../data/quartet-simulation-1.csv")
+
+ 
+
+
+;; Define a simulation function with customized output
+(defun test-quartet-tree-sim1 (species-tree k m)
+  "Run the MSCR-JC(k) process m times independently on a species tree with 4
+leaves. For each sample, infer the unrooted quartet topology of the species
+tree. Return the empirical distribution of inferred quartets. Example
+usage: (test-quartet-tree t* 500 100)"
+  (loop for i from 1 upto m
+        for result = (implement-four-point-method (mscr-jc species-tree k) k)
+        counting (= result 12) into q=12-34
+        counting (= result 13) into q=13-24
+        counting (= result 14) into q=14-23
+        counting (= result 0) into q=undetermined
+        finally (return
+                  (format nil "~a,~a,~a,~a,~a,~a,~a,~a"
+                          q=12-34 q=13-24 q=14-23 q=undetermined *f₁* *ρ* k m ))))
+
+
+;; Define function to update species tree
+(defun update-species-tree ()
+  "Update the species tree to the new parameter regime. No parameters need to be
+passed since it only uses global parameters."
+  (defparameter *species-tree*
+    (augment-tree-parameters
+     (make-node :population-name "ABCD"
+                :dist-from-parent 999
+                :recomb-rate 0
+                :left-subtree (make-node
+                               :population-name "ABC"
+                               :dist-from-parent *f₂*
+                               :recomb-rate 0
+                               :left-subtree (make-node
+                                              :population-name "AB"
+                                              :dist-from-parent *f₁*
+                                              :recomb-rate 0
+                                              :left-subtree (make-leaf
+                                                             :population-name "A"
+                                                             :dist-from-parent 1
+                                                             :recomb-rate *ρ*)
+                                              :right-subtree (make-leaf
+                                                              :population-name "B"
+                                                              :dist-from-parent 1
+                                                              :recomb-rate *ρ*))
+                               :right-subtree (make-leaf
+                                               :population-name "C"
+                                               :dist-from-parent (+ 1 *f₁*)
+                                               :recomb-rate 0))
+                :right-subtree (make-leaf
+                                :population-name "D"
+                                :dist-from-parent (+ 1 *f₁* *f₂*)
+                                :recomb-rate 0)))))
+
+
+;; Run the main simulation loop
+(time (with-open-file (output *output-filename*
+			      :direction :output
+			      :if-does-not-exist :create
+                              :if-exists :supersede)
+        (format output "AB|CD,AC|BD,AD|BC,undetermined,f₁,ρ,sequence-length-k,total-sample-number-m~%")
+        (loop for *f₁* in '(0.01 0.02 0.03 0.04 0.05 0.06 0.07 0.08 0.09 0.1) do
+          (loop for *ρ* in '(0 2 4 6 8 10 12)
+                do (update-species-tree)
+                   (print (incf *i*)) ;; increment and print progress tracker
+                   (format output "~a~%" (funcall #'test-quartet-tree-sim1 *species-tree* *k* *m*))))))
+
+#+END_SRC
+
