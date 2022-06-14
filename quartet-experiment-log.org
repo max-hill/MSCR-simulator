@@ -9,11 +9,22 @@ whereas *f₂* denotes the length of the other internal branch.
 
 Consistent with results from the the three-taxa simulations, we find that the
 effect disappears for edges of length greater than 1/10 of a coalescent unit. 
-* Experiment 1 - Unbalanced Quartet Tree
 
-Unbalanced tree with negligible f₁ and topology (((A,B),C),D). High recombination in
-A and B. The true quartet is least likely to be inferred.
+COMMON LISP CODE: All simulations were run in a common lisp REPL (I used emacs
+slime + SBCL). The first thing to do is to load all of the functions in
+generalized-simulator.lisp using a command like (load
+"PATH/MSCR-simulator/scripts/generalized-simulator.lisp") where PATH is replaced
+by the correct path.
 
+R CODE: The plots were produced in R. Using the code found in the file
+"make-quartet-plots.R". Comments in that file will direct you to the releveant
+code points.
+
+* Some Exploratory Simulations with an Unbalanced Quartet Tree
+Unbalanced tree with negligible f₁ and topology (((A,B),C),D). High
+recombination in A and B. The true quartet is least likely to be inferred. I
+didn't make plots for any of these simulations in this section, these were just
+use to help me get a feel for what is going on.
 ** Input
 #+BEGIN_SRC common-lisp
 (defparameter *mutation-rate* 0.1)
@@ -315,19 +326,15 @@ species tree is assumed unbalanced. The internal branch length is small.
 
 #+BEGIN_SRC common-lisp
 
-
 ;; Initialize global parameters and output file
 (defparameter *mutation-rate* 0.1)
 (defvar *f₁*) ; length of most recent internal branch
 (defparameter *f₂* 1) ; internal branch
 (defparameter *k* 500) ; sequence length
-(defparameter *m* 100) ; number of samples
+(defparameter *m* 50000) ; number of samples
 (defvar *ρ*) ; recombination rate in A and B (everywhere else is zero)
 (defparameter *i* 0) ; variable to track simulation progress
-
 (defparameter *output-filename* "../data/quartet-simulation-1.csv")
-
- 
 
 
 ;; Define a simulation function with customized output
@@ -387,12 +394,410 @@ passed since it only uses global parameters."
 			      :direction :output
 			      :if-does-not-exist :create
                               :if-exists :supersede)
-        (format output "AB|CD,AC|BD,AD|BC,undetermined,f₁,ρ,sequence-length-k,total-sample-number-m~%")
+        (format output "AB.CD,AC.BD,AD.BC,undetermined,f.one,ρ,sequence-length-k,total-sample-number-m~%")
+        (loop for *f₁* in '(0.01 0.02 0.03 0.04 0.05 0.06) do
+          (loop for *ρ* in '(0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15)
+                do (update-species-tree)
+                   (print (incf *i*)) ;; increment and print progress tracker
+                   (format output "~a~%" (funcall #'test-quartet-tree-sim1 *species-tree* *k* *m*))))))
+#+END_SRC
+
+
+** Results
+Values stored in the file "data/quartet-simulation-1.csv"
+
+We generated a plot "/analysis/quartet-simulation-1.jpeg" using the R code in /scripts/make-quartet-plots.R
+
+Simulation took about one hour:
+
+Evaluation took:
+  4031.814 seconds of real time
+  4049.860838 seconds of total run time (4027.955063 user, 21.905775 system)
+  [ Run times consist of 132.429 seconds GC time, and 3917.432 seconds non-GC time. ]
+  100.45% CPU
+  11,708,576,119,975 processor cycles
+  3,549,176,050,496 bytes consed
+
+** Future ideas:
+I accidentally deleted the datafile (lol), but not the graph... so I need to
+rerun this.
+
+I should rerun this simulation with 100,000 samples and extend the recombination
+rates up to 20. This might take about 4-5 hours.
+
+* Quartet Simulation 2
+Here we assume high recombination rates in all populations. This is a "most
+challenging test case" in which the rooted topology of the species tree is
+unbalanced (((A,B),C),D) and the internal branch lengths are negligible.
+Recombination rate varies from 0 to 20, encompassing biologically plausible
+values. On the y-axis is plotted the proportion of samples from which the
+correct unrooted quartet topology was inferred minus the proportion of samples
+from which the next most frequently-inferred quartet was inferred. 
+
+#+BEGIN_SRC common-lisp
+
+;; Initialize global parameters and output file
+(defparameter *mutation-rate* 0.1)
+(defparameter *f₁* 0.01) ; length of most recent internal branch
+(defparameter *f₂* 0.01) ; internal branch
+(defparameter *k* 500) ; sequence length
+(defparameter *m* 50000) ; number of samples
+(defvar *ρ*) ; recombination rate in all populations (other than the root population)
+(defparameter *i* 0) ; variable to track simulation progress
+(defparameter *output-filename* "../data/quartet-simulation-2.csv")
+
+;; Define a simulation function with customized output
+(defun test-quartet-tree-sim1 (species-tree k m)
+  "Run the MSCR-JC(k) process m times independently on a species tree with 4
+leaves. For each sample, infer the unrooted quartet topology of the species
+tree. Return the empirical distribution of inferred quartets. Example
+usage: (test-quartet-tree t* 500 100)"
+  (loop for i from 1 upto m
+        for result = (implement-four-point-method (mscr-jc species-tree k) k)
+        counting (= result 12) into q=12-34
+        counting (= result 13) into q=13-24
+        counting (= result 14) into q=14-23
+        counting (= result 0) into q=undetermined
+        finally (return
+                  (format nil "~a,~a,~a,~a,~a,~a,~a,~a"
+                          q=12-34 q=13-24 q=14-23 q=undetermined *f₁* *ρ* k m ))))
+
+;; Define function to update species tree
+(defun update-species-tree ()
+  "Update the species tree to the new parameter regime. No parameters need to be
+passed since it only uses global parameters."
+  (defparameter *species-tree*
+    (augment-tree-parameters
+     (make-node :population-name "ABCD"
+                :dist-from-parent 999
+                :recomb-rate 0
+                :left-subtree (make-node
+                               :population-name "ABC"
+                               :dist-from-parent *f₂*
+                               :recomb-rate *ρ*
+                               :left-subtree (make-node
+                                              :population-name "AB"
+                                              :dist-from-parent *f₁*
+                                              :recomb-rate *ρ*
+                                              :left-subtree (make-leaf
+                                                             :population-name "A"
+                                                             :dist-from-parent 1
+                                                             :recomb-rate *ρ*)
+                                              :right-subtree (make-leaf
+                                                              :population-name "B"
+                                                              :dist-from-parent 1
+                                                              :recomb-rate *ρ*))
+                               :right-subtree (make-leaf
+                                               :population-name "C"
+                                               :dist-from-parent (+ 1 *f₁*)
+                                               :recomb-rate *ρ*))
+                :right-subtree (make-leaf
+                                :population-name "D"
+                                :dist-from-parent (+ 1 *f₁* *f₂*)
+                                :recomb-rate *ρ*)))))
+
+;; Run the main simulation loop
+(time (with-open-file (output *output-filename*
+			      :direction :output
+			      :if-does-not-exist :create
+                              :if-exists :supersede)
+        (format output "AB.CD,AC.BD,AD.BC,undetermined,f.one,ρ,k,m~%")
+        (loop for *ρ* in '(0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20)
+                do (update-species-tree)
+                   (print (incf *i*)) ;; increment and print progress tracker
+                   (format output "~a~%" (funcall #'test-quartet-tree-sim1 *species-tree* *k* *m*)))))
+
+#+END_SRC
+
+** Results
+Took about half an hour to run. Produces a figure
+"analysis/quartet-simulation-2-plot.jpeg" and the raw data can be found in
+"data/quartet-simulation-2.csv". Supports the conclusion that comparable
+recombination rates in all populations does not impact inference.
+
+Evaluation took:
+  1723.813 seconds of real time
+  1732.237291 seconds of total run time (1720.930874 user, 11.306417 system)
+  [ Run times consist of 59.187 seconds GC time, and 1673.051 seconds non-GC time. ]
+  100.49% CPU
+  5,006,034,885,950 processor cycles
+  1,572,486,472,736 bytes consed
+
+* Quartet Simulation 3
+Here we assume high recombination rates in A and zero elsewhere. The
+species tree is assumed unbalanced. The internal branch length is small. 
+
+#+BEGIN_SRC common-lisp
+
+;; Initialize global parameters and output file
+(defparameter *mutation-rate* 0.1)
+(defvar *f₁*) ; length of most recent internal branch
+(defparameter *f₂* 1) ; internal branch
+(defparameter *k* 500) ; sequence length
+(defparameter *m* 50000) ; number of samples
+(defvar *ρ*) ; recombination rate in A and B (everywhere else is zero)
+(defparameter *i* 0) ; variable to track simulation progress
+(defparameter *output-filename* "../data/quartet-simulation-3.csv")
+
+;; Define a simulation function with customized output
+(defun test-quartet-tree-sim1 (species-tree k m)
+  "Run the MSCR-JC(k) process m times independently on a species tree with 4
+leaves. For each sample, infer the unrooted quartet topology of the species
+tree. Return the empirical distribution of inferred quartets. Example
+usage: (test-quartet-tree t* 500 100)"
+  (loop for i from 1 upto m
+        for result = (implement-four-point-method (mscr-jc species-tree k) k)
+        counting (= result 12) into q=12-34
+        counting (= result 13) into q=13-24
+        counting (= result 14) into q=14-23
+        counting (= result 0) into q=undetermined
+        finally (return
+                  (format nil "~a,~a,~a,~a,~a,~a,~a,~a"
+                          q=12-34 q=13-24 q=14-23 q=undetermined *f₁* *ρ* k m ))))
+
+;; Define function to update species tree
+(defun update-species-tree ()
+  "Update the species tree to the new parameter regime. No parameters need to be
+passed since it only uses global parameters."
+  (defparameter *species-tree*
+    (augment-tree-parameters
+     (make-node :population-name "ABCD"
+                :dist-from-parent 999
+                :recomb-rate 0
+                :left-subtree (make-node
+                               :population-name "ABC"
+                               :dist-from-parent *f₂*
+                               :recomb-rate 0
+                               :left-subtree (make-node
+                                              :population-name "AB"
+                                              :dist-from-parent *f₁*
+                                              :recomb-rate 0
+                                              :left-subtree (make-leaf
+                                                             :population-name "A"
+                                                             :dist-from-parent 1
+                                                             :recomb-rate *ρ*)
+                                              :right-subtree (make-leaf
+                                                              :population-name "B"
+                                                              :dist-from-parent 1
+                                                              :recomb-rate 0))
+                               :right-subtree (make-leaf
+                                               :population-name "C"
+                                               :dist-from-parent (+ 1 *f₁*)
+                                               :recomb-rate 0))
+                :right-subtree (make-leaf
+                                :population-name "D"
+                                :dist-from-parent (+ 1 *f₁* *f₂*)
+                                :recomb-rate 0)))))
+
+;; Run the main simulation loop
+(time (with-open-file (output *output-filename*
+			      :direction :output
+			      :if-does-not-exist :create
+                              :if-exists :supersede)
+        (format output "AB.CD,AC.BD,AD.BC,undetermined,f,ρ,k,m~%")
         (loop for *f₁* in '(0.01 0.02 0.03 0.04 0.05 0.06 0.07 0.08 0.09 0.1) do
-          (loop for *ρ* in '(0 2 4 6 8 10 12)
+          (loop for *ρ* in '(0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15)
                 do (update-species-tree)
                    (print (incf *i*)) ;; increment and print progress tracker
                    (format output "~a~%" (funcall #'test-quartet-tree-sim1 *species-tree* *k* *m*))))))
 
 #+END_SRC
 
+** Results
+Output data written to "../data/quartet-simulation-3.csv"
+Visualization made with code in "scripts/make-quartet-plots.R", and the
+resulting plot is written to "/analysis/quartet-simulation-3.jpeg"
+
+Took about 100 minutes. 
+
+Evaluation took:
+  5977.857 seconds of real time
+  6005.210924 seconds of total run time (5974.854622 user, 30.356302 system)
+  [ Run times consist of 190.968 seconds GC time, and 5814.243 seconds non-GC time. ]
+  100.46% CPU
+  17,359,965,260,930 processor cycles
+  5,072,494,045,328 bytes consed
+
+* Quartet Simulation 4
+Let's redo the quartet simulation 2 with a balanced topology rather than
+unbalanced topology.
+
+#+BEGIN_SRC common-lisp
+
+;; Initialize global parameters and output file
+(defparameter *mutation-rate* 0.1)
+(defparameter *f₁* 0.01) ; length of most recent internal branch
+(defparameter *f₂* 0.01) ; internal branch
+(defparameter *k* 500) ; sequence length
+(defparameter *m* 50000) ; number of samples
+(defvar *ρ*) ; recombination rate in all populations (other than the root population)
+(defparameter *i* 0) ; variable to track simulation progress
+(defparameter *output-filename* "../data/quartet-simulation-4.csv")
+
+;; Define a simulation function with customized output
+(defun test-quartet-tree-sim1 (species-tree k m)
+  "Run the MSCR-JC(k) process m times independently on a species tree with 4
+leaves. For each sample, infer the unrooted quartet topology of the species
+tree. Return the empirical distribution of inferred quartets. Example
+usage: (test-quartet-tree t* 500 100)"
+  (loop for i from 1 upto m
+        for result = (implement-four-point-method (mscr-jc species-tree k) k)
+        counting (= result 12) into q=12-34
+        counting (= result 13) into q=13-24
+        counting (= result 14) into q=14-23
+        counting (= result 0) into q=undetermined
+        finally (return
+                  (format nil "~a,~a,~a,~a,~a,~a,~a,~a"
+                          q=12-34 q=13-24 q=14-23 q=undetermined *f₁* *ρ* k m ))))
+
+;; Define function to update species tree
+(defun update-species-tree ()
+  "Update the species tree to the new parameter regime. No parameters need to be
+passed since it only uses global parameters."
+(defparameter *species-tree*  (augment-tree-parameters
+                   (make-node :population-name "ABCD"
+                              :dist-from-parent 999
+                              :recomb-rate 0
+                              :left-subtree (make-node
+                                             :population-name "AB"
+                                             :dist-from-parent *f₁*
+                                             :recomb-rate *ρ*
+                                             :left-subtree (make-leaf
+                                                            :population-name "A"
+                                                            :dist-from-parent 1
+                                                            :recomb-rate *ρ*)
+                                             :right-subtree (make-leaf
+                                                             :population-name "B"
+                                                             :dist-from-parent 1
+                                                             :recomb-rate *ρ*))
+                              :right-subtree (make-node
+                                              :population-name "CD"
+                                              :dist-from-parent *f₂*
+                                              :left-subtree (make-leaf
+                                                             :population-name "C"
+                                                             :dist-from-parent 1
+                                                             :recomb-rate *ρ*)
+                                              :right-subtree (make-leaf
+                                                              :population-name "D"
+                                                              :dist-from-parent 1
+                                                              :recomb-rate *ρ*))))))
+
+;; Run the main simulation loop
+(time (with-open-file (output *output-filename*
+			      :direction :output
+			      :if-does-not-exist :create
+                              :if-exists :supersede)
+        (format output "AB.CD,AC.BD,AD.BC,undetermined,f,ρ,k,m~%")
+        (loop for *ρ* in '(0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20)
+                do (update-species-tree)
+                   (print (incf *i*)) ;; increment and print progress tracker
+                   (format output "~a~%" (funcall #'test-quartet-tree-sim1 *species-tree* *k* *m*)))))
+
+#+END_SRC
+
+** Results
+Took about half an hour. Results written to "/data/quartet-simulation-4.csv"
+
+Plot made using code from make-quartet-plots.R. Plot is at
+"/analysis/quartet-simulation-4-plot.jpeg"
+
+Evaluation took:
+  1682.609 seconds of real time
+  1690.836878 seconds of total run time (1679.789682 user, 11.047196 system)
+  [ Run times consist of 58.484 seconds GC time, and 1632.353 seconds non-GC time. ]
+  100.49% CPU
+  4,886,370,483,639 processor cycles
+  1,544,566,641,440 bytes consed
+
+* Quartet Simulation 5
+Redo simulation 1 with more samples and parameters.
+
+Here we assume high recombination rates in A and B and zero elsewhere. The
+species tree is assumed unbalanced. The internal branch length is small. 
+
+#+BEGIN_SRC common-lisp
+
+;; Initialize global parameters and output file
+(defparameter *mutation-rate* 0.1)
+(defvar *f₁*) ; length of most recent internal branch
+(defparameter *f₂* 1) ; internal branch
+(defparameter *k* 500) ; sequence length
+(defparameter *m* 100000) ; number of samples
+(defvar *ρ*) ; recombination rate in A and B (everywhere else is zero)
+(defparameter *i* 0) ; variable to track simulation progress
+(defparameter *output-filename* "../data/quartet-simulation-5.csv")
+
+;; Define a simulation function with customized output
+(defun test-quartet-tree-sim1 (species-tree k m)
+  "Run the MSCR-JC(k) process m times independently on a species tree with 4
+leaves. For each sample, infer the unrooted quartet topology of the species
+tree. Return the empirical distribution of inferred quartets. Example
+usage: (test-quartet-tree t* 500 100)"
+  (loop for i from 1 upto m
+        for result = (implement-four-point-method (mscr-jc species-tree k) k)
+        counting (= result 12) into q=12-34
+        counting (= result 13) into q=13-24
+        counting (= result 14) into q=14-23
+        counting (= result 0) into q=undetermined
+        finally (return
+                  (format nil "~a,~a,~a,~a,~a,~a,~a,~a"
+                          q=12-34 q=13-24 q=14-23 q=undetermined *f₁* *ρ* k m ))))
+
+;; Define function to update species tree
+(defun update-species-tree ()
+  "Update the species tree to the new parameter regime. No parameters need to be
+passed since it only uses global parameters."
+  (defparameter *species-tree*
+    (augment-tree-parameters
+     (make-node :population-name "ABCD"
+                :dist-from-parent 999
+                :recomb-rate 0
+                :left-subtree (make-node
+                               :population-name "ABC"
+                               :dist-from-parent *f₂*
+                               :recomb-rate 0
+                               :left-subtree (make-node
+                                              :population-name "AB"
+                                              :dist-from-parent *f₁*
+                                              :recomb-rate 0
+                                              :left-subtree (make-leaf
+                                                             :population-name "A"
+                                                             :dist-from-parent 1
+                                                             :recomb-rate *ρ*)
+                                              :right-subtree (make-leaf
+                                                              :population-name "B"
+                                                              :dist-from-parent 1
+                                                              :recomb-rate *ρ*))
+                               :right-subtree (make-leaf
+                                               :population-name "C"
+                                               :dist-from-parent (+ 1 *f₁*)
+                                               :recomb-rate 0))
+                :right-subtree (make-leaf
+                                :population-name "D"
+                                :dist-from-parent (+ 1 *f₁* *f₂*)
+                                :recomb-rate 0)))))
+
+;; Run the main simulation loop
+(time (with-open-file (output *output-filename*
+			      :direction :output
+			      :if-does-not-exist :create
+                              :if-exists :supersede)
+        (format output "AB.CD,AC.BD,AD.BC,undetermined,f,ρ,k,m~%")
+        (loop for *f₁* in '(0.01 0.02 0.03 0.04 0.05 0.06 0.07 0.08 0.09 0.10) do
+          (loop for *ρ* in '(0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20)
+                do (update-species-tree)
+                   (print (incf *i*)) ;; increment and print progress tracker
+                   (format output "~a~%" (funcall #'test-quartet-tree-sim1 *species-tree* *k* *m*))))))
+#+END_SRC
+
+** Results 
+The datafile generated is "/data/quartet-simulation-5.csv" and a plot of the
+same name was made using the R code in "/scripts/make-quartet-plots.R".
+
+Evaluation took:
+  21331.287 seconds of real time
+  21431.220354 seconds of total run time (21313.054254 user, 118.166100 system)
+  [ Run times consist of 720.255 seconds GC time, and 20710.966 seconds non-GC time. ]
+  100.47% CPU
+  61,947,061,129,309 processor cycles
+  19,025,047,184,160 bytes consed
