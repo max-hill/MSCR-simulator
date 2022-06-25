@@ -1200,7 +1200,7 @@ by make-node-from-edge"
       (add-times (left-subtree tree) population-start-time)
       (add-times (right-subtree tree) population-start-time))))
          
- ;;______________________________________________________________________________
+;;______________________________________________________________________________
 ;;
 ;; Part 11. Main simulation loop with quartet inference
 ;;______________________________________________________________________________
@@ -1264,3 +1264,66 @@ usage: (test-quartet-tree t* 500 100)"
 
 
 
+;;______________________________________________________________________________
+;;
+;; Part 12. Test ABBA-BABA 
+;;______________________________________________________________________________
+
+
+(defun implement-abba-baba (msa sequence-length)
+  "Input: An MSA with 4 rows and sequence-length columns. Output: the unrooted
+quartet topology, as inferred by the four-point method."
+  (loop for j from 0 upto (1- sequence-length)
+        for n₁ = (aref msa 0 j) ; nᵢ = nucleotide for leaf i
+        for n₂ = (aref msa 1 j)
+        for n₃ = (aref msa 2 j)
+        for n₄ = (aref msa 3 j)
+        counting (and (/= n₂ n₃)
+                      (= n₁ n₃)
+                      (= n₂ n₄)) into baba; BABA-site-pattern count
+        counting (and (= n₂ n₃)
+                      (= n₁ n₄)
+                      (/= n₁ n₂)) into abba ; ABBA-site-pattern count
+        counting (and (= n₁ n₂ n₃ n₄)) into noninformative
+        finally
+           (return
+             (list abba baba (float (/ (- abba baba) (+ abba baba))) noninformative (length *list-of-breakpoints*)))))
+
+
+(defparameter *f₁* 0.01)
+(defparameter *f₂* 1)
+(defparameter *ρ* 5)
+
+(defparameter t* (augment-tree-parameters
+                  (make-node :population-name "ABCD"
+                             :dist-from-parent 999
+                             :recomb-rate 0
+                             :left-subtree (make-node
+                                            :population-name "ABC"
+                                            :dist-from-parent *f₂*
+                                            :recomb-rate 0
+                                            :left-subtree (make-node
+                                                           :population-name "AB"
+                                                           :dist-from-parent *f₁*
+                                                           :recomb-rate 0
+                                                           :left-subtree (make-leaf
+                                                                          :population-name "A"
+                                                                          :dist-from-parent 1
+                                                                          :recomb-rate *ρ*)
+                                                           :right-subtree (make-leaf
+                                                                           :population-name "B"
+                                                                           :dist-from-parent 1
+                                                                           :recomb-rate 0))
+                                            :right-subtree (make-leaf
+                                                            :population-name "C"
+                                                            :dist-from-parent (+ 1 *f₁*)
+                                                            :recomb-rate 0))
+                             :right-subtree (make-leaf
+                                             :population-name "D"
+                                             :dist-from-parent (+ 1 *f₁* *f₂*)
+                                             :recomb-rate 0))))
+
+(defparameter *m* 1000)
+(loop for i from 1 upto *m*
+      summing (third (implement-abba-baba (mscr-jc t* 1000000) 1000000)) into bigsum
+      finally (return (/ bigsum *m*)))

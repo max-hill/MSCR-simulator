@@ -3,7 +3,7 @@
 ## make-plots.R --- use the R package ggplot2 to create plots from simulated data
 ##
 ## Author: Max Hill
-## (Last updated 2021-04-30)
+## (Last updated 2022-06-14)
 
 
 
@@ -842,7 +842,27 @@ plot +  guides(color = guide_legend(override.aes = list(size=4))) -> plot # make
 
 plot
 
-ggsave("part12-plot1.jpeg",path="../analysis/")
+ggsave("part12-plot1-new.jpeg",path="../analysis/")
+
+### Plot 12.1.1 Same as 12.1 but with shapes not just dots.
+
+df = subset(read.csv("part12/part12-jc-sequence-N100000-L500.csv", header=TRUE), θ==0.01)
+
+zone <- as.factor(1*(df$P.bc>df$P.ab & df$P.bc>df$P.ac) + 2*(df$P.ac>df$P.ab & df$P.ac>df$P.bc)) # categorical variable indicating which topology wins, with 0,1,and 2 corresponding to AB|C, BC|A, and AC|B respectively)
+top_names <- c(expression(hat('t')*'=AB|C'), expression(hat('t')*'=BC|A'),expression(hat('t')*'=AC|B'))
+plot = ggplot(df, aes(x=ρ_a, y=τ_abc-τ_ab, size=2, color=zone)) +
+    geom_point(aes(shape=zone, color=zone, size=2)) +
+    scale_shape_manual(labels=top_names, values = c(16,17,15))+
+    scale_colour_manual(labels=top_names, values = c("#00BFC4FF","#F9766EFF","black"))+
+    labs(color="Uniquely favored\nrooted triple",
+         shape="Uniquely favored\nrooted triple",
+         x=expression('ρ'['A']),
+         y=expression('Internal branch length τ'['AB'])) +     
+    scale_size(guide=FALSE) + #removes the 'size' legend'
+    theme(text=element_text(size=20), legend.text=element_text(size=20)) # make text bigger
+plot +  guides(color = guide_legend(override.aes = list(size=4))) -> plot # make legend text bigger
+ggsave("part12-plot1-new.jpeg",path="../analysis/")
+
 
 
 
