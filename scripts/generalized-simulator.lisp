@@ -1,18 +1,14 @@
 ;;;; generalized-simulator.lisp --- Implement the MSCR-JC(k) process on
-;;;;                                arbitrary binary trees. Currently under
-;;;;                                construction.
+;;;;                                arbitrary binary trees.
 ;;
 ;; Author: max hill 
-;; (Last updated 2022-06-05)
+;; (Last updated 2022-09-21)
 
-;; DESCRIPTION: Here we attempt to implement a simulator which takes as input a
-;; binary tree T (ideally in newick tree format, with branch lengths) and output
-;; an MSA in the form of an alignment file generated according to the MSCR
-;; process on T.
-;;
-;; At present, both the JC69 process and the MSCR process have been implemented
-;; for arbitrary trees. These are two ends of the pipeline, but they are not
-;; connected yet. Inference is also not implemented.
+;; DESCRIPTION: Here we implement a simulator which takes as input any binary
+;; tree T (with branch lengths) and output an MSA in the form of an MSA
+;; alignment file. The output is generated according to the MSCR-JC process on
+;; T. We also implement inference using 4-point condition. Currently only the
+;; Jukes-Cantor substitution process is supported.
 ;;
 ;; Remains to do:
 ;;
@@ -159,13 +155,16 @@ alist of parameters, a left subtree, and a right subtree."
 (defun leafp (tree)
   "Return t if tree is a leaf and nil otherwise."
   (and (listp tree)
-       (= 1 (length tree))
+       (= 1 (length tree))  ;; should use (and (consp lst) (not (cdr lst)))
+                            ;; instead. mh 2022-06-27
        (listp (first tree))))
 
 (defun nodep (tree)
-  "Return t if tree is a node and nil otherwise."
+  "Return t if tree is a node and nil otherwise." ;; I never actually use this
+                                                  ;; function in the simulator.
+                                                  ;; mh 2022-06-27
   (and (listp tree)
-       (= 3 (length tree))
+       (= 3 (length tree))  
        (listp (first tree))
        (or (nodep (second tree))
            (leafp (second tree)))
@@ -654,7 +653,7 @@ union of I and D. Example usage: (add-interval-to-osiset '(1 . 111) '((1 . 2) (3
 . 11) (12 . 15)))"
   (loop for x in osiset
         with overlap-indicator = nil
-        with intervals-remaining = (length osiset)
+        with intervals-remaining = (length osiset) ;; couldn't you just track this with a variable? mh 2022-06-27
         with interval-added = nil
         do (decf intervals-remaining)
         if (overlapp x I)
@@ -733,7 +732,7 @@ elements is done *without* replacement. Selection *with* replacement can be
 specified by setting the optional variable 'with-replacement' to a non-nil
 value."
   (cond ((null x) nil)
-	((= n 1) (nth (random (length x)) x))
+	((= n 1) (nth (random (length x)) x))   ;; add an auxilliary variable so you don't have to keep counting the length of x on recursive calls. mh 2022-06-27
 	(t (randomly-choose-several x n with-replacement))))
 
 (defun randomly-choose-several (x &optional (n 1) (with-replacement nil))
@@ -783,7 +782,7 @@ recombination, it is rendered inactive, but two new active lineages are created.
 In general, active lineages are stored in P and inactive lineages are stored in
 Q. I can't remember off the top of my head but there might be an exception to
 this rule.)"
-  (length (first edge-sets)))
+  (length (first edge-sets))) ;; You could improve code efficiency by tracking the number of active lineages with variables rather than repeatedly recounting the edge set. mh 2022-06-27
 
 (defun get-active-lineages (edge-sets)
   "For code readability. Input: (P,Q). Returns P"
@@ -1066,7 +1065,7 @@ accordingly. And then (not yet implemented) add the corresponding tree node to
   (let* ((all-descendants-of-lineage (find-descendants site edge))
          (sr (loop for x in *previously-coalesced*
                    with r = all-descendants-of-lineage ;; r = list of remaining lineages
-                   until (<= (length r) 1)
+                   until (<= (length r) 1) ;; again you should track the number of lineages here with a variable, not by repeatedly recounting the set. mh 2022-06-27
                    when (sort (copy-list (intersection x r)) #'<)
                      collect it into s  ;; s = list of coalescing nodes (may have 0, 1 or 2 elements)
                      and do (setf r (set-difference r (intersection r x)))
@@ -1076,7 +1075,7 @@ accordingly. And then (not yet implemented) add the corresponding tree node to
          (new-label-to-add (sort (copy-list (union (union (first s) (second s)) r)) #'<)))
     (cond
       ;; Case 1: both lineages are leaves (base case)
-      ((and (= (length s) 0) (= (length r) 2))
+      ((and (= (length s) 0) (= (length r) 2))  ;; again, this type of idiom is not efficient. you don't need to be traversing s and r repeatedly. mh 2022-06-27
        (setf *previously-coalesced* (cons new-label-to-add *previously-coalesced*))
        (when *mscr-verbose-mode*
          (format t "~%Both coalescing lineages are leaves.~%New label: ~a" new-label-to-add))
@@ -1327,3 +1326,76 @@ quartet topology, as inferred by the four-point method."
 (loop for i from 1 upto *m*
       summing (third (implement-abba-baba (mscr-jc t* 1000000) 1000000)) into bigsum
       finally (return (/ bigsum *m*)))
+
+
+
+;;; Experimental Utility
+;; I want to write a general-purpose macro that can be used for efficiently
+;; testing if a list is of a given length, or if it is of at most (or at least)
+;; some given length. Unless I am missing something, this should really just
+;; involve use cars and cdrs. Possible usage example: (length-of x :equals
+;; 2) (length-of x :greater-than 2), (length-of x > 3), etc
+(defmacro length-of (lst :key number))
+
+(defun length-at-least (list n)
+  (cond ((zerop n) t)
+        (list (length-at-least (cdr list) (1- n)))
+        (t nil)))
+
+(defun single (lst)
+  (and (consp lst) (not (cdr lst))))
+
+
+(defun length-of1 (lst n)
+  (declare (type fixnum n) (type list lst))
+  (declare (optimize (speed 3) (safety 0)))
+  (not (nthcdr n lst)))
+
+(defun length-at-most-3 (lst)  ;; obviously, this is fast - checks if lst has length at most 3
+  (declare (type list lst))
+  (declare (optimize (speed 3) (safety 0)))
+  (not (cdddr lst)))
+
+(defun length-at-least-3 (lst)  ;; obviously, this is fast - checks if lst has length at least 3
+  (declare (type list lst))
+  (declare (optimize (speed 3) (safety 0)))
+  (cddr lst))
+
+(defun length-equal-3 (lst)
+  (declare (type list lst))
+  (declare (optimize (speed 3) (safety 0)))
+  (let ((x (cddr lst)))
+    (and x (not (cdr x)))))
+
+(defun length-eq-3 (lst)
+  (declare (optimize (speed 3) (safety 0)))
+  (funcall #'(lambda (x) (when x (not (cdr x)))) (cddr lst)))
+
+
+(defun length-eq-3 (lst)
+  (declare (optimize (speed 3) (safety 0)))
+  (funcall #'(lambda (x) (if x (not (cdr x)))) (cddr lst)))
+
+
+(defun aux2 (x)
+  (declare (optimize (speed 3) (safety 0)))
+  (if x
+      (not (cdr x))
+      nil))
+
+(defun rlength (x acc) ;; much slower then built in length, but disassembles to about the same size.
+  (declare (type fixnum acc) (type list x))
+  (declare (optimize (speed 3) (safety 0)))
+  (if (null x)
+      acc
+      (rlength (cdr x) (the fixnum (1+ acc)))))
+
+;; for testing
+(defparameter test-lists (list '() '(1) '(1 2) '(1 2 3) '(1 2 3 4) '(1 2 3 4 5)))
+(mapcar #'length-eq-3 test-lists)
+(time (loop for i from 1 upto 1000000000 do (length-eq-3 z)))
+
+
+
+(has-at-least-elements 10 '(1 2 3 4))   ; NIL
+(has-at-least-elements 4 '(1 2 3 4))   
