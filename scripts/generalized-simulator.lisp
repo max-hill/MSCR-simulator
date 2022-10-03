@@ -14,12 +14,7 @@
 ;;
 ;; 1. (low priority) Implement a newick -> lisp tree converter
 ;;
-;; 2. (high priority) Implement the inference methods on the new MSAs. In
-;;    particular, we want to implement the four-point method. We could also try
-;;    estimating branch lengths, as this would be a key test of one of our
-;;    paper's conclusions.
-;;
-;; 3. (low priority) sensible naming of variables and things
+;; 2. (low priority) sensible naming of variables and things
 ;;    I should rename 'edge' to 'lineage'. Also consider using p-lists:
 ;;    '(:age 0.1 :ancestral-sites-from-taxa-1 ((1 . 4) (6 . 10) (12 . 40))
 ;;    :ancestral-sites-from-taxa-2 ((1 . 7) (9 . 11))
