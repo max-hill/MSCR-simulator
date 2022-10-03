@@ -6,6 +6,11 @@ documentation for each script can be found as commentary in the files
 themselves.
 
 # Scripts
+  
+* [generalized-simulator.lisp](generalized-simulator.lisp) is the most recent and
+  most general form of the simulator. It takes as input an arbitrary binary tree.
+  It generalizes the (now deprecated) simulator in [simulate.sh](simulate.sh).
+  
 * [simulate.sh](simulate.sh) contains the script for starting up a simulation
   under a set of parameter regimes as specified in
   [simulation-parameters.lisp](simulation-parameters.lisp). It is intended to be
@@ -39,10 +44,6 @@ themselves.
   species tree with topology ((AB)C), as well as those functions for inferring
   gene 'tree' topologies from the simulated data. It is loaded automatically by
   [simulate.sh](simulate.sh).
-  
-* [generalized-simulator.lisp](generalized-simulator.lisp) is an attempt to 
-  generalize the simulator to take as input arbitrary newick trees. It is 
-  currently under construction. 
 
 * [make-plots.R](make-plots.R) contains R code for creating all plots in my
   project report from the simulation data contained in the `data/` directory. The
